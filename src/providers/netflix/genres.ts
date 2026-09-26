@@ -94,13 +94,57 @@ export function extractNetflixGenreLabelsFromTitleDocument(document: Document): 
 
   const values: string[] = [];
   const seen = new Set<string>();
+  const add = (value: string) => {
+    const label = normalizeLabel(value);
+    if (!label || label.length > 200 || seen.has(label)) return;
+    seen.add(label);
+    values.push(label);
+  };
 
   for (const selector of selectors) {
     for (const element of document.querySelectorAll(selector)) {
-      const label = normalizeLabel(element.textContent ?? '');
-      if (!label || label.length > 200 || seen.has(label)) continue;
-      seen.add(label);
-      values.push(label);
+      add(element.textContent ?? '');
+    }
+  }
+
+  if (!values.length) {
+    const genreHeadings = new Set([
+      'genres',
+      'gêneros',
+      'géneros',
+      'genres :',
+      'gêneros:',
+      'géneros:',
+      'genre',
+      'generi',
+      'ジャンル',
+    ]);
+
+    for (const element of document.querySelectorAll('h1,h2,h3,h4,h5,div,span,p,dt')) {
+      const heading = normalizeLabel(element.textContent ?? '').toLocaleLowerCase();
+      if (!genreHeadings.has(heading)) continue;
+
+      const candidates = [
+        element.nextElementSibling,
+        element.parentElement,
+      ].filter((value): value is Element => Boolean(value));
+
+      for (const candidate of candidates) {
+        const raw = normalizeLabel(candidate.textContent ?? '');
+        if (!raw || raw.length > 1200) continue;
+
+        const stripped = raw.replace(
+          /^(?:genres|gêneros|géneros|genre|generi|ジャンル)\s*:?[\s-]*/i,
+          '',
+        );
+        for (const part of stripped.split(/\s*(?:,|•|·|\||\/\/|\n)\s*/)) {
+          add(part);
+        }
+
+        if (values.length) break;
+      }
+
+      if (values.length) break;
     }
   }
 
