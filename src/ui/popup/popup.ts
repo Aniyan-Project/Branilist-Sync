@@ -658,10 +658,51 @@ librarySearch.addEventListener('input', renderLibrary);
 libraryStatus.addEventListener('change', renderLibrary);
 libraryType.addEventListener('change', renderLibrary);
 librarySort.addEventListener('change', renderLibrary);
+for (const control of [settingAutoSync, settingShowToast, settingToastDuration, settingQuickStart]) {
+  control.addEventListener('change', () => void persistSettings());
+}
 
 currentOpen.addEventListener('click', () => {
   if (currentMatchedMedia) void chrome.tabs.create({ url: mediaUrl(currentMatchedMedia) });
 });
+currentOpenFallback.addEventListener('click', () => {
+  if (currentMatchedMedia) void chrome.tabs.create({ url: mediaUrl(currentMatchedMedia) });
+});
+currentPlus.addEventListener('click', () => {
+  if (!currentEntry) return;
+  void incrementEntry(currentEntry, currentPlus).catch(error => {
+    currentFeedback.textContent = error instanceof Error ? error.message : 'Falha ao atualizar progresso.';
+    currentFeedback.classList.add('error');
+  });
+});
+currentSave.addEventListener('click', () => void busy(currentSave, async () => {
+  if (!currentEntry) return;
+  const scoreText = currentScore.value.trim();
+  const score = scoreText ? Number(scoreText) : null;
+  if (score !== null && (score < 0.5 || score > 10 || (score * 2) % 1 !== 0)) {
+    currentFeedback.textContent = 'A nota deve ficar entre 0.5 e 10 em passos de 0.5.';
+    currentFeedback.classList.add('error');
+    return;
+  }
+  const response = await chrome.runtime.sendMessage({
+    type: 'LIBRARY_UPDATE',
+    mediaId: currentEntry.mediaId,
+    payload: {
+      status: currentStatus.value as LibraryStatus,
+      progress: currentEntry.progress,
+      score,
+      repeatCount: currentEntry.repeatCount,
+    },
+  });
+  if (!response?.ok) throw new Error(response?.error ?? 'Não foi possível atualizar a lista.');
+  currentEntry.status = currentStatus.value as LibraryStatus;
+  currentEntry.score = score;
+  currentEntry.updatedAt = new Date().toISOString();
+  renderCurrentEntry(currentEntry);
+  renderLibrary();
+  currentFeedback.textContent = 'Lista atualizada.';
+  currentFeedback.classList.remove('error');
+}));
 
 pendingSelect.addEventListener('change', () => {
   const state = pending.find(item => item.retryId === pendingSelect.value);
