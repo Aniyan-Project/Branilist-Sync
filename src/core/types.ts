@@ -252,6 +252,7 @@ export type ExtensionMessage =
   | { type: 'EPISODE_NAVIGATED'; payload: EpisodeNavigationState }
   | { type: 'BRIDGE_DIAGNOSTIC'; payload: Partial<CrunchyrollBridgeDiagnostics> }
   | { type: 'NETFLIX_BRIDGE_DIAGNOSTIC'; payload: Partial<NetflixBridgeDiagnostics> }
+  | { type: 'NETFLIX_WATCH_CHANGED'; payload: { watchId: string; canonicalUrl: string } }
   | { type: 'PROVIDER_DIAGNOSTIC'; payload: ProviderPageDiagnostic }
   | { type: 'TRACKER_CLEARED'; payload: { providerId: string; canonicalUrl: string } }
   | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
