@@ -33,6 +33,7 @@ export interface DetectedMedia {
   providerMediaId?: string;
   providerEpisodeId?: string;
   providerSeasonId?: string;
+  providerSeasonSlug?: string;
   providerSeriesId?: string;
   kind: MediaKind;
   title: string;
