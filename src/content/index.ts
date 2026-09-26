@@ -130,7 +130,7 @@ function networkEpisodeToMedia(
   return {
     providerId: 'crunchyroll',
     providerMediaId: crunchyrollSeasonIdentity(seriesProviderId, seasonSlug, seasonProviderId, episodeProviderId),
-    providerEpisodeId,
+    providerEpisodeId: episodeProviderId,
     providerSeasonId: seasonProviderId,
     providerSeasonSlug: seasonSlug,
     providerSeriesId: seriesProviderId,
