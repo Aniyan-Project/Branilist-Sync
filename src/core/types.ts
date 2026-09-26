@@ -1,4 +1,6 @@
 export type MediaKind = 'ANIME' | 'MANGA';
+export type MediaTitleLanguage = 'AUTO' | 'PORTUGUESE' | 'ENGLISH' | 'ROMAJI' | 'NATIVE';
+export type LibraryStatus = 'PLANNING' | 'CURRENT' | 'COMPLETED' | 'PAUSED' | 'DROPPED';
 
 export interface DetectedMedia {
   providerId: string;
@@ -53,7 +55,66 @@ export interface BranilistProfile {
   id: number;
   username: string;
   displayName: string;
+  titleLanguage: MediaTitleLanguage;
+  localeCode: string;
   scopes: string[];
+}
+
+export interface LibraryMedia {
+  id: number;
+  slug: string;
+  type: MediaKind;
+  title: {
+    romaji?: string | null;
+    english?: string | null;
+    portuguese?: string | null;
+    native?: string | null;
+  };
+  coverImage?: string | null;
+  total?: number | null;
+}
+
+export interface LibraryEntry {
+  mediaId: number;
+  status: LibraryStatus;
+  progress: number;
+  score?: number | null;
+  repeatCount: number;
+  media: LibraryMedia;
+}
+
+export interface LibraryResponse {
+  items: LibraryEntry[];
+}
+
+export interface LibraryUpdate {
+  status: LibraryStatus;
+  progress: number;
+  score?: number | null;
+  repeatCount: number;
+}
+
+export interface MediaDetail {
+  id: number;
+  slug: string;
+  type: MediaKind;
+  status: string;
+  format: string;
+  title: {
+    romaji?: string | null;
+    english?: string | null;
+    native?: string | null;
+    portuguese?: string | null;
+  };
+  description?: string | null;
+  coverImage?: string | null;
+  bannerImage?: string | null;
+  episodes?: number | null;
+  chapters?: number | null;
+  seasonYear?: number | null;
+  averageScore?: number | null;
+  popularity: number;
+  isAdult: boolean;
 }
 
 export interface ProviderInfo {
@@ -98,4 +159,7 @@ export type ExtensionMessage =
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
   | { type: 'AUTH_STATUS' }
+  | { type: 'LIBRARY_GET' }
+  | { type: 'LIBRARY_UPDATE'; mediaId: number; payload: LibraryUpdate }
+  | { type: 'MEDIA_GET'; mediaId: number }
   | { type: 'SYNC_PROGRESS'; payload: DetectedMedia };
