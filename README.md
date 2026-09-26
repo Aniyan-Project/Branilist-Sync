@@ -4,12 +4,19 @@ Extensão oficial do **Branilist** para acompanhar automaticamente anime e mang�
 
 O Branilist Sync detecta a mídia e o progresso em sites compatíveis, pede ao backend para resolver a obra com segurança e só então envia uma atualização idempotente da lista.
 
-## v0.4.1 — Identidade da Chrome Web Store
+## v0.4.2 — Identidade estável de temporada no Crunchyroll
 
-O item de rascunho da loja já foi criado: `kimfpnbfjfmpkjpcmfnjeoefakhcoclh`.
-A chave pública está no manifest e mantém o mesmo ID ao carregar `dist/` localmente.
-Após o build, a CI valida a correspondência com `npm run check:store -- kimfpnbfjfmpkjpcmfnjeoefakhcoclh`.
-Veja [notas da v0.4.1](RELEASE-v0.4.1.md).
+O item de rascunho da loja usa o ID `kimfpnbfjfmpkjpcmfnjeoefakhcoclh` e a chave pública do manifest mantém essa identidade localmente.
+
+A v0.4.2 separa a identidade do episódio da identidade usada para matching:
+- o ID de `/watch/<id>` continua identificando o episódio atual;
+- `season_id`, quando extraído com segurança, passa a ser o `providerMediaId` preferencial;
+- `series_id` é mantido apenas para diagnóstico e nunca libera sozinho uma escrita;
+- conflito entre IDs bloqueia o evento.
+
+OAuth real em produção já foi validado com o callback definitivo e o client `branilist-sync`.
+Um smoke real no Crunchyroll confirmou detecção + `/resolve` + fail-safe de confirmação sem alterar a lista.
+Veja [notas da v0.4.2](RELEASE-v0.4.2.md) e [notas da v0.4.1](RELEASE-v0.4.1.md).
 
 ### Preparação para produção da v0.4
 
@@ -19,7 +26,7 @@ Crunchyroll recusa metadados incertos e preserva temporadas para revisão no bac
 O pacote é validado para Manifest V3, com content script independente.
 
 Veja [release notes](RELEASE-v0.4.0.md) e o [guia de publicação](docs/CHROME-WEB-STORE.md).
-O provisionamento do client no backend e o teste OAuth/playback real ainda estão pendentes.
+O client OAuth já está provisionado em produção e o login real já foi validado. O playback real está em validação de matching seguro por temporada antes da submissão à loja.
 
 ### Integração com o backend
 
