@@ -84,6 +84,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         providerId: payload.providerId,
         active: payload.active,
         lastProbeAt: new Date().toISOString(),
+        lastClearedAt: payload.active ? undefined : previous?.lastClearedAt,
         lastCanonicalUrl: `${currentUrl.origin}${currentUrl.pathname}`,
         lastPathname: payload.pathname.slice(0, 500),
         hasVideo: payload.hasVideo,
@@ -143,9 +144,12 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     }
     if (message.type === 'TRACKER_DETECTED' || message.type === 'SYNC_PROGRESS') {
       const media = validateDetection(message.payload, sender);
+      const previousDiagnostics = (await chrome.storage.local.get(PROVIDER_DIAG))[PROVIDER_DIAG] as ProviderDiagnostics | undefined;
       const providerDiagnostics: ProviderDiagnostics = {
+        ...(previousDiagnostics?.providerId === media.providerId ? previousDiagnostics : { providerId: media.providerId }),
         providerId: media.providerId,
         active: true,
+        lastClearedAt: undefined,
         lastDetectedAt: new Date().toISOString(),
         lastCanonicalUrl: media.canonicalUrl,
         lastEpisodeId: media.providerEpisodeId,
