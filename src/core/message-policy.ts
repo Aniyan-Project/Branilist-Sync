@@ -2,7 +2,7 @@ import type { DetectedMedia } from './types';
 import { crunchyrollMediaId } from '../providers/crunchyroll/meta';
 
 const providerToken = (value: unknown): string | undefined =>
-  typeof value === 'string' && /^[A-Z0-9]{6,32}$/i.test(value) ? value : undefined;
+  typeof value === 'string' && /^[A-Z0-9]{4,32}$/i.test(value) ? value : undefined;
 
 export function trustedPopup(sender: chrome.runtime.MessageSender): boolean {
   return sender.id === chrome.runtime.id && !sender.tab && sender.url === chrome.runtime.getURL('src/ui/popup/popup.html');
