@@ -18,6 +18,8 @@ export async function syncProgress(media: DetectedMedia): Promise<void> {
       providerMediaId: media.providerMediaId,
       mediaType: media.kind,
       title: media.title,
+      episodeTitle: media.episodeTitle,
+      seasonTitle: media.seasonTitle,
       episode: media.episode,
       chapter: media.chapter,
       progressPercent: media.progressPercent,

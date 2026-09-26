@@ -7,6 +7,8 @@ export interface DetectedMedia {
   title: string;
   episode?: number;
   chapter?: number;
+  episodeTitle?: string;
+  seasonTitle?: string;
   progressPercent?: number;
   canonicalUrl: string;
 }

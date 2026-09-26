@@ -1,4 +1,6 @@
-import type { TrackerProvider } from '../core/types';
+import { observeVideoProgress } from '../core/video-progress';
+import type { DetectedMedia, TrackerProvider } from '../core/types';
+import { parseCrunchyrollMetadata } from './crunchyroll/meta';
 
 export const crunchyrollProvider: TrackerProvider = {
   id: 'crunchyroll',
@@ -11,15 +13,41 @@ export const crunchyrollProvider: TrackerProvider = {
   },
 
   async detect({ url, document }) {
-    // TODO(provider): estabilizar seletores com fixtures reais antes de marcar como suportado.
-    const title = document.querySelector('h1')?.textContent?.trim();
-    if (!title) return null;
+    const metadata = parseCrunchyrollMetadata(url, document);
+    if (!metadata) return null;
 
     return {
       providerId: this.id,
+      providerMediaId: metadata.providerMediaId,
       kind: 'ANIME',
-      title,
+      title: metadata.seriesTitle,
+      episode: metadata.episode,
+      episodeTitle: metadata.episodeTitle,
       canonicalUrl: url.href,
+    };
+  },
+
+  observe(ctx, emit) {
+    let current: DetectedMedia | null = null;
+
+    void this.detect(ctx).then((detected) => {
+      current = detected;
+    });
+
+    const stopProgress = observeVideoProgress(ctx.document, {
+      thresholdPercent: 80,
+      onThreshold(progressPercent) {
+        if (!current?.episode) return;
+
+        emit({
+          ...current,
+          progressPercent,
+        });
+      },
+    });
+
+    return () => {
+      stopProgress();
     };
   },
 };
