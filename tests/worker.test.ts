@@ -20,7 +20,7 @@ vi.mock('../src/core/api', () => ({
 }));
 const id = 'a'.repeat(32);
 const url = 'https://www.crunchyroll.com/watch/G123';
-const source = { id, url, frameId: 0, tab: {} };
+const source = { id, url, frameId: 0, tab: { id: 1 } };
 const popup = { id, url: `chrome-extension://${id}/src/ui/popup/popup.html` };
 const media = { providerId: 'crunchyroll', providerMediaId: 'G123', canonicalUrl: url, kind: 'ANIME', title: 'Example', episode: 3, progressPercent: 90 };
 const safe = { matched: true, mediaId: 42, requiresConfirmation: false, confidence: 1, action: 'MATCHED', previousProgress: 2, newProgress: 3 };
@@ -67,7 +67,7 @@ it('does not overlap logout with writes and clears persisted events', async () =
   await Promise.all([tracking, logout]);
   expect(mocks.logout).toHaveBeenCalledTimes(1);
   expect(storage['branilist.sync.v4']).toBeUndefined();
-  expect(storage['branilist.detected']).toBeUndefined();
+  expect(storage['branilist.tracker-sessions.v1']).toBeUndefined();
 });
 
 it('resolves detections and saves a user correction without exposing credentials', async () => {
@@ -190,7 +190,8 @@ it('persists Crunchyroll bridge diagnostics for popup troubleshooting', async ()
 
 it('clears the current detection when Crunchyroll SPA leaves a watch page', async () => {
   await send({ type: 'TRACKER_DETECTED', payload: media });
-  expect(storage['branilist.detected']).toBeTruthy();
+  const sessionsBeforeClear = storage['branilist.tracker-sessions.v1'] as Record<string, any>;
+  expect(sessionsBeforeClear['1:0:crunchyroll']?.detected).toBeTruthy();
 
   const cleared = await send({
     type: 'TRACKER_CLEARED',
@@ -200,8 +201,9 @@ it('clears the current detection when Crunchyroll SPA leaves a watch page', asyn
     },
   });
   expect(cleared.ok).toBe(true);
-  expect(storage['branilist.detected']).toBeUndefined();
-  expect(storage['branilist.episode-navigation']).toBeUndefined();
+  const sessionsAfterClear = storage['branilist.tracker-sessions.v1'] as Record<string, any>;
+  expect(sessionsAfterClear['1:0:crunchyroll']?.detected).toBeUndefined();
+  expect(sessionsAfterClear['1:0:crunchyroll']?.episodeNavigation).toBeUndefined();
 });
 
 
@@ -225,7 +227,8 @@ it('persists the latest current resolution separately from progress sync state',
 
 it('clears the current resolution when leaving a watch page', async () => {
   await send({ type: 'TRACKER_DETECTED', payload: media });
-  expect(storage['branilist.current-resolution']).toBeTruthy();
+  const sessionsBeforeClear = storage['branilist.tracker-sessions.v1'] as Record<string, any>;
+  expect(sessionsBeforeClear['1:0:crunchyroll']?.currentResolution).toBeTruthy();
 
   const cleared = await send({
     type: 'TRACKER_CLEARED',
@@ -235,7 +238,8 @@ it('clears the current resolution when leaving a watch page', async () => {
     },
   });
   expect(cleared.ok).toBe(true);
-  expect(storage['branilist.current-resolution']).toBeUndefined();
+  const sessionsAfterClear = storage['branilist.tracker-sessions.v1'] as Record<string, any>;
+  expect(sessionsAfterClear['1:0:crunchyroll']?.currentResolution).toBeUndefined();
 });
 
 
@@ -281,7 +285,7 @@ it('persists active Netflix player diagnostics before metadata is detected', asy
     id,
     url: 'https://www.netflix.com/browse',
     frameId: 0,
-    tab: {},
+    tab: { id: 2 },
   } as chrome.runtime.MessageSender;
 
   const diagnostic = await send({
@@ -314,4 +318,149 @@ it('persists active Netflix player diagnostics before metadata is detected', asy
     playerTitleText: 'Mushoku Tensei: Jobless Reincarnation T1:E1',
   });
   expect(status.providerDiagnostics.lastProbeAt).toBeTruthy();
+});
+
+
+it('isolates Crunchyroll and Netflix state across different tabs', async () => {
+  const crunchySource = {
+    id,
+    url: 'https://www.crunchyroll.com/watch/G123',
+    frameId: 0,
+    tab: { id: 11 },
+  } as chrome.runtime.MessageSender;
+  const netflixSource = {
+    id,
+    url: 'https://www.netflix.com/watch/81402903',
+    frameId: 0,
+    tab: { id: 22 },
+  } as chrome.runtime.MessageSender;
+  const netflixMedia = {
+    providerId: 'netflix',
+    providerMediaId: '80987039|season:1',
+    providerEpisodeId: '81402903',
+    providerSeasonId: '1',
+    providerSeriesId: '80987039',
+    canonicalUrl: 'https://www.netflix.com/watch/81402903',
+    kind: 'ANIME',
+    title: 'Mushoku Tensei: Jobless Reincarnation',
+    episode: 3,
+  };
+
+  expect((await send({ type: 'TRACKER_DETECTED', payload: media }, crunchySource)).ok).toBe(true);
+  expect((await send({ type: 'TRACKER_DETECTED', payload: netflixMedia }, netflixSource)).ok).toBe(true);
+
+  const crunchyStatus = await send({ type: 'AUTH_STATUS', activeTabId: 11 }, popup);
+  const netflixStatus = await send({ type: 'AUTH_STATUS', activeTabId: 22 }, popup);
+
+  expect(crunchyStatus.lastDetected).toMatchObject({
+    providerId: 'crunchyroll',
+    title: 'Example',
+  });
+  expect(netflixStatus.lastDetected).toMatchObject({
+    providerId: 'netflix',
+    title: 'Mushoku Tensei: Jobless Reincarnation',
+    episode: 3,
+  });
+  expect(crunchyStatus.sessions).toHaveLength(2);
+  expect(netflixStatus.sessions).toHaveLength(2);
+});
+
+it('keeps two Netflix tabs independent', async () => {
+  const netflixTabA = {
+    id,
+    url: 'https://www.netflix.com/watch/81402903',
+    frameId: 0,
+    tab: { id: 31 },
+  } as chrome.runtime.MessageSender;
+  const netflixTabB = {
+    id,
+    url: 'https://www.netflix.com/watch/81726714',
+    frameId: 0,
+    tab: { id: 32 },
+  } as chrome.runtime.MessageSender;
+
+  const mediaA = {
+    providerId: 'netflix',
+    providerMediaId: '80987039|season:1',
+    providerEpisodeId: '81402903',
+    providerSeasonId: '1',
+    providerSeriesId: '80987039',
+    canonicalUrl: 'https://www.netflix.com/watch/81402903',
+    kind: 'ANIME',
+    title: 'Mushoku Tensei: Jobless Reincarnation',
+    episode: 3,
+  };
+  const mediaB = {
+    providerId: 'netflix',
+    providerMediaId: '81278456|season:1',
+    providerEpisodeId: '81726714',
+    providerSeasonId: '1',
+    providerSeriesId: '81278456',
+    canonicalUrl: 'https://www.netflix.com/watch/81726714',
+    kind: 'ANIME',
+    title: 'Another Anime',
+    episode: 1,
+  };
+
+  expect((await send({ type: 'TRACKER_DETECTED', payload: mediaA }, netflixTabA)).ok).toBe(true);
+  expect((await send({ type: 'TRACKER_DETECTED', payload: mediaB }, netflixTabB)).ok).toBe(true);
+
+  const statusA = await send({ type: 'AUTH_STATUS', activeTabId: 31 }, popup);
+  const statusB = await send({ type: 'AUTH_STATUS', activeTabId: 32 }, popup);
+
+  expect(statusA.lastDetected?.providerEpisodeId).toBe('81402903');
+  expect(statusB.lastDetected?.providerEpisodeId).toBe('81726714');
+});
+
+it('clears a Netflix watch change only in the originating tab', async () => {
+  const crunchySource = {
+    id,
+    url: 'https://www.crunchyroll.com/watch/G123',
+    frameId: 0,
+    tab: { id: 41 },
+  } as chrome.runtime.MessageSender;
+  const netflixSource = {
+    id,
+    url: 'https://www.netflix.com/watch/81402903',
+    frameId: 0,
+    tab: { id: 42 },
+  } as chrome.runtime.MessageSender;
+  const netflixMedia = {
+    providerId: 'netflix',
+    providerMediaId: '80987039|season:1',
+    providerEpisodeId: '81402903',
+    providerSeasonId: '1',
+    providerSeriesId: '80987039',
+    canonicalUrl: 'https://www.netflix.com/watch/81402903',
+    kind: 'ANIME',
+    title: 'Mushoku Tensei: Jobless Reincarnation',
+    episode: 3,
+  };
+
+  await send({ type: 'TRACKER_DETECTED', payload: media }, crunchySource);
+  await send({ type: 'TRACKER_DETECTED', payload: netflixMedia }, netflixSource);
+
+  const changedNetflixSource = {
+    ...netflixSource,
+    url: 'https://www.netflix.com/watch/82682360?trackId=264265097',
+  } as chrome.runtime.MessageSender;
+  const changed = await send({
+    type: 'NETFLIX_WATCH_CHANGED',
+    payload: {
+      watchId: '82682360',
+      canonicalUrl: 'https://www.netflix.com/watch/82682360',
+    },
+  }, changedNetflixSource);
+
+  expect(changed.ok).toBe(true);
+
+  const netflixStatus = await send({ type: 'AUTH_STATUS', activeTabId: 42 }, popup);
+  const crunchyStatus = await send({ type: 'AUTH_STATUS', activeTabId: 41 }, popup);
+
+  expect(netflixStatus.lastDetected).toBeUndefined();
+  expect(netflixStatus.currentResolution).toBeUndefined();
+  expect(crunchyStatus.lastDetected).toMatchObject({
+    providerId: 'crunchyroll',
+    title: 'Example',
+  });
 });
