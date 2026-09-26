@@ -152,22 +152,24 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         typeof payload.hasWatchId !== 'boolean'
       ) throw new Error('Diagnóstico de provider inválido.');
 
-      const previous = (await chrome.storage.local.get(PROVIDER_DIAG))[PROVIDER_DIAG] as ProviderDiagnostics | undefined;
-      const next: ProviderDiagnostics = {
-        ...(previous?.providerId === payload.providerId ? previous : { providerId: payload.providerId }),
-        providerId: payload.providerId,
-        active: payload.active,
-        lastProbeAt: new Date().toISOString(),
-        lastClearedAt: payload.active ? undefined : previous?.lastClearedAt,
-        lastCanonicalUrl: `${currentUrl.origin}${currentUrl.pathname}`,
-        lastPathname: payload.pathname.slice(0, 500),
-        hasVideo: payload.hasVideo,
-        hasPlayerRoot: payload.hasPlayerRoot,
-        hasTitleRoot: payload.hasTitleRoot,
-        hasWatchId: payload.hasWatchId,
-        playerTitleText: safeTitle,
-      };
-      await chrome.storage.local.set({ [PROVIDER_DIAG]: next });
+      await updateTrackerSession(sender, payload.providerId, session => {
+        const previous = session.providerDiagnostics;
+        const providerDiagnostics: ProviderDiagnostics = {
+          ...(previous?.providerId === payload.providerId ? previous : { providerId: payload.providerId }),
+          providerId: payload.providerId,
+          active: payload.active,
+          lastProbeAt: new Date().toISOString(),
+          lastClearedAt: payload.active ? undefined : previous?.lastClearedAt,
+          lastCanonicalUrl: `${currentUrl.origin}${currentUrl.pathname}`,
+          lastPathname: payload.pathname.slice(0, 500),
+          hasVideo: payload.hasVideo,
+          hasPlayerRoot: payload.hasPlayerRoot,
+          hasTitleRoot: payload.hasTitleRoot,
+          hasWatchId: payload.hasWatchId,
+          playerTitleText: safeTitle,
+        };
+        return { ...session, providerDiagnostics };
+      });
       return { ok: true };
     }
     if (message.type === 'TRACKER_CLEARED') {
