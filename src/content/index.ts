@@ -7,7 +7,7 @@ let mountedKey = '';
 let remountQueued = false;
 
 function candidatePageUrl(): URL {
-  const live = new URL(window.location.href);
+  const live = new URL(location.href);
   const candidates = [
     document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href,
     document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.content,
@@ -27,7 +27,7 @@ function candidatePageUrl(): URL {
 }
 
 function pageKey(): string {
-  const live = window.location.href;
+  const live = location.href;
   const effective = candidatePageUrl().href;
   return live === effective ? live : live + '|' + effective;
 }
