@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  netflixPlayerProbe,
   netflixSeasonIdentity,
   netflixSeriesIdentity,
   netflixWatchId,
+  netflixWatchIdFromDocument,
   parseNetflixEpisodeLabel,
   parseNetflixMetadata,
 } from '../src/providers/netflix/meta';
@@ -80,5 +82,36 @@ describe('parseNetflixMetadata', () => {
       </div>
     `;
     expect(parseNetflixMetadata(new URL('https://www.netflix.com/watch/81234567'), document)).toBeNull();
+  });
+});
+
+
+it('accepts a localized Netflix watch path', () => {
+  expect(netflixWatchId(new URL('https://www.netflix.com/pt-br/watch/81234567'))).toBe('81234567');
+});
+
+it('recovers the watch id from canonical metadata when location is a player overlay route', () => {
+  const canonical = document.createElement('link');
+  canonical.rel = 'canonical';
+  canonical.href = 'https://www.netflix.com/watch/81234567';
+  document.head.append(canonical);
+
+  expect(
+    netflixWatchIdFromDocument(new URL('https://www.netflix.com/browse'), document),
+  ).toBe('81234567');
+});
+
+it('recognizes active Netflix player evidence independently from the route', () => {
+  document.body.innerHTML = `
+    <div data-uia="watch-video">
+      <video></video>
+      <div data-uia="video-title"><span>T1:E1</span></div>
+    </div>
+  `;
+  expect(netflixPlayerProbe(document)).toMatchObject({
+    hasVideo: true,
+    hasPlayerRoot: true,
+    hasTitleRoot: true,
+    active: true,
   });
 });
