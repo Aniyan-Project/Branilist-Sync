@@ -66,9 +66,14 @@ async function confirmAnime(seriesId: string): Promise<{ isAnime: boolean; genre
   try {
     const response = await fetch(`https://www.netflix.com/title/${encodeURIComponent(seriesId)}`, {
       method: 'GET',
-      credentials: 'include',
+      credentials: 'omit',
+      cache: 'no-store',
       redirect: 'follow',
-      headers: { accept: 'text/html,application/xhtml+xml' },
+      referrerPolicy: 'no-referrer',
+      headers: {
+        accept: 'text/html,application/xhtml+xml',
+        'accept-language': navigator.language || 'en-US',
+      },
     });
 
     const finalUrl = new URL(response.url || `https://www.netflix.com/title/${seriesId}`);
@@ -92,6 +97,7 @@ async function confirmAnime(seriesId: string): Promise<{ isAnime: boolean; genre
         genreCheckedAt: new Date().toISOString(),
         genreIds,
         genreSource: 'ids',
+        genreFetchMode: 'public',
         animeConfirmed: classification.isAnime,
       });
 
@@ -112,6 +118,7 @@ async function confirmAnime(seriesId: string): Promise<{ isAnime: boolean; genre
         genreCheckedAt: new Date().toISOString(),
         genreLabels,
         genreSource: 'labels',
+        genreFetchMode: 'public',
         animeConfirmed: classification.isAnime,
       });
 
@@ -122,6 +129,7 @@ async function confirmAnime(seriesId: string): Promise<{ isAnime: boolean; genre
       genreStatus: 'genres_not_found',
       genreCheckedAt: new Date().toISOString(),
       genreSource: 'none',
+      genreFetchMode: 'public',
       animeConfirmed: false,
     });
     return null;
