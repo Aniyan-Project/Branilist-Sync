@@ -160,3 +160,29 @@ it('returns recent durable sync history to the popup', async () => {
   });
   expect(status.history[0].occurredAt).toBeTruthy();
 });
+
+
+it('persists Crunchyroll bridge diagnostics for popup troubleshooting', async () => {
+  const diagnostic = await send({
+    type: 'BRIDGE_DIAGNOSTIC',
+    payload: {
+      active: true,
+      startedAt: '2026-09-26T16:00:00Z',
+      jsonResponsesSeen: 7,
+      lastRequestUrl: 'https://www.crunchyroll.com/content/v2/cms/objects/G8WUN0X72',
+      lastRequestAt: '2026-09-26T16:00:05Z',
+      lastEpisodeId: 'G8WUN0X72',
+      lastEpisodeNumber: 3,
+      lastEpisodeAt: '2026-09-26T16:00:05Z',
+    },
+  });
+  expect(diagnostic.ok).toBe(true);
+
+  const status = await send({ type: 'AUTH_STATUS' }, popup);
+  expect(status.bridgeDiagnostics).toMatchObject({
+    active: true,
+    jsonResponsesSeen: 7,
+    lastEpisodeId: 'G8WUN0X72',
+    lastEpisodeNumber: 3,
+  });
+});
