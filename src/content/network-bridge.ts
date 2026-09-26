@@ -15,6 +15,37 @@ const provider: ProviderId | null =
 const nativeFetch = window.fetch.bind(window);
 const netflixEligibility = new Map<string, Promise<boolean>>();
 let jsonResponsesSeen = 0;
+let netflixProbePending = false;
+let lastNetflixProbeAt = 0;
+let lastNetflixProbedWatchId = '';
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function currentNetflixWatchId(): string | undefined {
+  return location.pathname.match(/\/watch\/(\d+)(?:\/|$)/)?.[1];
+}
+
+function netflixMemberApiBase(): string | undefined {
+  const root = record((window as unknown as { netflix?: unknown }).netflix);
+  const reactContext = record(root?.reactContext);
+  const models = record(reactContext?.models);
+  const services = record(models?.services);
+  const data = record(services?.data);
+  const memberapi = record(data?.memberapi);
+  const hostname = typeof memberapi?.hostname === 'string' ? memberapi.hostname.trim() : '';
+  const paths = Array.isArray(memberapi?.path) ? memberapi.path : [];
+  const firstPath = typeof paths[0] === 'string' ? paths[0].trim() : '';
+
+  if (!hostname || !firstPath || !/^[a-z0-9.-]+$/i.test(hostname) || !hostname.toLowerCase().endsWith('.netflix.com')) {
+    return undefined;
+  }
+  if (!firstPath.startsWith('/') || firstPath.includes('..')) return undefined;
+  return `https://${hostname}${firstPath.replace(/\/$/, '')}`;
+}
 
 function eventName(kind: 'episode' | 'diagnostic') {
   return provider ? `branilist-sync:${provider}-network-${kind}` : '';
@@ -94,7 +125,53 @@ async function emitEpisodes(url: string, payload: unknown) {
   }
 }
 
+async function probeNetflixMetadata(): Promise<void> {
+  if (provider !== 'netflix' || netflixProbePending) return;
+
+  const watchId = currentNetflixWatchId();
+  if (!watchId || watchId === lastNetflixProbedWatchId) return;
+
+  const now = Date.now();
+  if (now - lastNetflixProbeAt < 2000) return;
+  lastNetflixProbeAt = now;
+
+  const base = netflixMemberApiBase();
+  if (!base) {
+    emitDiagnostic({ metadataProbe: 'waiting_for_context' });
+    return;
+  }
+
+  netflixProbePending = true;
+  const url = `${base}/metadata?movieid=${encodeURIComponent(watchId)}`;
+
+  try {
+    const response = await nativeFetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      redirect: 'follow',
+    });
+    if (!response.ok) {
+      emitDiagnostic({ metadataProbe: `http_${response.status}` });
+      return;
+    }
+
+    const payload = await response.json();
+    await emitEpisodes(url, payload);
+    lastNetflixProbedWatchId = watchId;
+    emitDiagnostic({ metadataProbe: 'ok', metadataProbeWatchId: watchId });
+  } catch {
+    emitDiagnostic({ metadataProbe: 'failed' });
+  } finally {
+    netflixProbePending = false;
+  }
+}
+
 if (provider) emitDiagnostic({ startedAt: new Date().toISOString() });
+
+if (provider === 'netflix') {
+  void probeNetflixMetadata();
+  window.setInterval(() => void probeNetflixMetadata(), 500);
+}
 
 window.fetch = async (...args: Parameters<typeof fetch>) => {
   const response = await nativeFetch(...args);
