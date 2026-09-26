@@ -1,7 +1,9 @@
 import { extractNetflixNetworkEpisode } from '../providers/netflix/network';
 import {
+  classifyNetflixGenreLabels,
   classifyNetflixGenres,
   extractNetflixGenreIdsFromTitleHtml,
+  extractNetflixGenreLabelsFromTitleDocument,
 } from '../providers/netflix/genres';
 
 const EPISODE_EVENT = 'branilist-sync:netflix-network-episode';
@@ -81,26 +83,48 @@ async function confirmAnime(seriesId: string): Promise<{ isAnime: boolean; genre
 
     const html = await response.text();
     const genreIds = extractNetflixGenreIdsFromTitleHtml(html);
-    if (!genreIds.length) {
+    if (genreIds.length) {
+      const classification = classifyNetflixGenres(genreIds);
+      genreCache.set(seriesId, classification);
+
       emitDiagnostic({
-        genreStatus: 'genres_not_found',
+        genreStatus: response.status,
         genreCheckedAt: new Date().toISOString(),
-        animeConfirmed: false,
+        genreIds,
+        genreSource: 'ids',
+        animeConfirmed: classification.isAnime,
       });
-      return null;
+
+      return classification;
     }
 
-    const classification = classifyNetflixGenres(genreIds);
-    genreCache.set(seriesId, classification);
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    const genreLabels = extractNetflixGenreLabelsFromTitleDocument(document);
+    if (genreLabels.length) {
+      const classification = {
+        genreIds: [],
+        isAnime: classifyNetflixGenreLabels(genreLabels),
+      };
+      genreCache.set(seriesId, classification);
+
+      emitDiagnostic({
+        genreStatus: response.status,
+        genreCheckedAt: new Date().toISOString(),
+        genreLabels,
+        genreSource: 'labels',
+        animeConfirmed: classification.isAnime,
+      });
+
+      return classification;
+    }
 
     emitDiagnostic({
-      genreStatus: response.status,
+      genreStatus: 'genres_not_found',
       genreCheckedAt: new Date().toISOString(),
-      genreIds,
-      animeConfirmed: classification.isAnime,
+      genreSource: 'none',
+      animeConfirmed: false,
     });
-
-    return classification;
+    return null;
   } catch {
     emitDiagnostic({
       genreStatus: 'fetch_error',
