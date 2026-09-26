@@ -6,11 +6,34 @@ const url = new URL('https://www.crunchyroll.com/watch/G123/episode');
 const fixture = (name: string) => new DOMParser().parseFromString(readFileSync(`tests/fixtures/crunchyroll/${name}.html`, 'utf8'), 'text/html');
 describe('representative Crunchyroll HTML', () => {
   it('ignores malformed JSON and site/recommendation titles', () => {
-    expect(parseCrunchyrollMetadata(url, fixture('localized'))).toMatchObject({ providerMediaId: 'G123', seriesTitle: 'Série de exemplo', episode: 3 });
+    expect(parseCrunchyrollMetadata(url, fixture('localized'))).toMatchObject({
+      providerMediaId: 'G123',
+      episodeProviderId: 'G123',
+      seriesProviderId: 'G24H1N334',
+      seriesTitle: 'Série de exemplo',
+      episode: 3,
+    });
   });
   it('resolves graph references and preserves season evidence for backend review', () => {
-    expect(parseCrunchyrollMetadata(url, fixture('season-graph'))).toMatchObject({ seriesTitle: 'Example Anime', seasonTitle: 'Season 2', episode: 3 });
+    expect(parseCrunchyrollMetadata(url, fixture('season-graph'))).toMatchObject({
+      providerMediaId: 'SEASON123',
+      episodeProviderId: 'G123',
+      seasonProviderId: 'SEASON123',
+      seriesProviderId: 'SERIES123',
+      seriesTitle: 'Example Anime',
+      seasonTitle: 'Season 2',
+      episode: 3,
+    });
   });
+  it('blocks conflicting embedded season identities', () => {
+    const doc = fixture('season-graph');
+    const script = doc.createElement('script');
+    script.type = 'application/json';
+    script.textContent = JSON.stringify({ id: 'G123', season_id: 'SEASON999', series_id: 'SERIES123' });
+    doc.head.append(script);
+    expect(parseCrunchyrollMetadata(url, doc)).toBeNull();
+  });
+
   it('never guesses from generic site metadata or episode cards', () => {
     expect(parseCrunchyrollMetadata(url, fixture('unsafe-fallback'))).toBeNull();
   });

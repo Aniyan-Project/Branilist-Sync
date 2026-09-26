@@ -1,11 +1,12 @@
-# v0.4.1 — preparar e publicar
+# v0.4.2 — preparar e publicar
 
 ## Estado desta versão
 
 O rascunho na Chrome Web Store já existe com ID `kimfpnbfjfmpkjpcmfnjeoefakhcoclh`.
 A chave pública fornecida pelo responsável foi validada e incluída no manifest.
-Login real com ID definitivo, páginas reais do Crunchyroll e
-aprovação da loja permanecem pendentes. CI verde não certifica esses passos.
+O client `branilist-sync` já foi provisionado em produção e o login real com o ID definitivo foi validado.
+Um smoke real no Crunchyroll confirmou detecção do episódio e resposta segura de `/resolve`; o backend exigiu confirmação e nenhuma escrita foi feita.
+A validação de `season_id`/matching automático e a aprovação da loja permanecem pendentes. CI verde não certifica esses passos.
 As fixtures são sintéticas e reduzidas; não foram capturadas de uma conta real.
 
 ## Próximos passos para o item existente
@@ -25,9 +26,8 @@ As fixtures são sintéticas e reduzidas; não foram capturadas de uma conta rea
    `https://kimfpnbfjfmpkjpcmfnjeoefakhcoclh.chromiumapp.org/oauth2` no client
    público `branilist-sync`. Execute o smoke de login/playback abaixo antes da submissão.
 
-O provisionamento não foi executado por esta atualização: depende de acesso ao
-ambiente do backend e do ID do operador. A checagem da chave/ID não prova que o
-client já está cadastrado ou que o login foi validado em produção.
+O provisionamento e o login real já foram concluídos em produção para o ID definitivo.
+Reprovisionar só é necessário se owner, callback, scopes ou ID da extensão mudarem.
 
 ## Primeiro envio: criar o rascunho e obter o ID
 

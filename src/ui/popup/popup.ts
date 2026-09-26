@@ -33,7 +33,12 @@ function renderMedia(media: DetectedMedia | null) {
     : media.chapter
       ? `Capítulo ${media.chapter}`
       : 'Mídia detectada';
-  mediaDetailEl.textContent = `${media.providerId} • ${progress}`;
+  const ids = [
+    media.providerEpisodeId ? `episódio ${media.providerEpisodeId}` : null,
+    media.providerSeasonId ? `temporada ${media.providerSeasonId}` : null,
+    media.providerSeriesId ? `série ${media.providerSeriesId}` : null,
+  ].filter(Boolean).join(' • ');
+  mediaDetailEl.textContent = `${media.providerId} • ${progress}${ids ? ` • ${ids}` : ''}`;
 }
 
 function renderSync(state: SyncState | null) {

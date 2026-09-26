@@ -3,6 +3,9 @@ export type MediaKind = 'ANIME' | 'MANGA';
 export interface DetectedMedia {
   providerId: string;
   providerMediaId?: string;
+  providerEpisodeId?: string;
+  providerSeasonId?: string;
+  providerSeriesId?: string;
   kind: MediaKind;
   title: string;
   episode?: number;

@@ -20,6 +20,9 @@ export const crunchyrollProvider: TrackerProvider = {
     return {
       providerId: this.id,
       providerMediaId: metadata.providerMediaId,
+      providerEpisodeId: metadata.episodeProviderId,
+      providerSeasonId: metadata.seasonProviderId,
+      providerSeriesId: metadata.seriesProviderId,
       kind: 'ANIME',
       title: metadata.seriesTitle,
       episode: metadata.episode,
