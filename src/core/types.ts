@@ -197,7 +197,7 @@ export type ExtensionMessage =
   | { type: 'TRACKER_DETECTED'; payload: DetectedMedia }
   | { type: 'EPISODE_NAVIGATED'; payload: EpisodeNavigationState }
   | { type: 'BRIDGE_DIAGNOSTIC'; payload: Partial<CrunchyrollBridgeDiagnostics> }
-  | { type: 'TRACKER_CLEARED'; payload: { providerId: 'crunchyroll'; canonicalUrl: string } }
+  | { type: 'TRACKER_CLEARED'; payload: { providerId: string; canonicalUrl: string } }
   | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
