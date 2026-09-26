@@ -25,7 +25,7 @@ export function validateDetection(value: unknown, sender: chrome.runtime.Message
   if (!allowedHost || !episodeId || source.origin !== canonical.origin ||
     media.providerId !== 'crunchyroll' || media.kind !== 'ANIME' ||
     (declaredEpisodeId && declaredEpisodeId !== episodeId) ||
-    !providerMediaId || providerMediaId !== (seasonId ?? episodeId) ||
+    !providerMediaId || providerMediaId !== (seasonId ?? seriesId ?? episodeId) ||
     typeof media.title !== 'string' || !media.title.trim() || media.title.length > 300 ||
     !Number.isSafeInteger(media.episode) || media.episode! <= 0) {
     throw new Error('Mídia inválida para esta página.');
