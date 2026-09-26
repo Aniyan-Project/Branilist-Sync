@@ -6,7 +6,7 @@ function preferredTitle(item: CatalogSearchItem): string {
   return item.title.portuguese || item.title.english || item.title.romaji || `Branilist #${item.id}`;
 }
 
-async function searchCatalog(query: string, kind: DetectedMedia['kind']): Promise<CatalogSearchItem[]> {
+export async function searchCatalog(query: string, kind: DetectedMedia['kind']): Promise<CatalogSearchItem[]> {
   const response = await fetch(`${SEARCH_BASE}?q=${encodeURIComponent(query)}&limit=12`, {
     method: 'GET',
     credentials: 'omit',
