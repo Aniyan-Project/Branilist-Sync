@@ -203,7 +203,7 @@ it('uses Crunchyroll network metadata as the primary episode signal', async () =
   await Promise.resolve();
 
   window.dispatchEvent(new CustomEvent('branilist-sync:crunchyroll-network-episode', {
-    detail: {
+    detail: JSON.stringify({
       episodeProviderId: 'G8WUN0X72',
       seasonProviderId: 'SEASON123',
       seriesProviderId: 'G24H1N334',
@@ -211,7 +211,7 @@ it('uses Crunchyroll network metadata as the primary episode signal', async () =
       seasonTitle: 'Portuguese Dub',
       episodeTitle: 'É de Qualidade Yui-nyan',
       episode: 3,
-    },
+    }),
   }));
   await Promise.resolve();
   await Promise.resolve();
@@ -242,11 +242,11 @@ it('rejects forged network metadata for a different watch ID', async () => {
   await Promise.resolve();
 
   window.dispatchEvent(new CustomEvent('branilist-sync:crunchyroll-network-episode', {
-    detail: {
+    detail: JSON.stringify({
       episodeProviderId: 'GOTHER123',
       seriesTitle: 'Wrong episode',
       episode: 99,
-    },
+    }),
   }));
   await Promise.resolve();
 
