@@ -719,6 +719,12 @@ async function refreshSession() {
       netflixBridge.lastMetadataStatus !== undefined ? `Metadata status: ${netflixBridge.lastMetadataStatus}` : null,
       typeof netflixBridge.metadataMatched === 'boolean' ? `Metadata encontrada: ${netflixBridge.metadataMatched ? 'SIM' : 'não'}` : null,
       netflixBridge.lastSeriesId ? `Série ID: ${netflixBridge.lastSeriesId}` : null,
+      netflixBridge.genreStatus !== undefined ? `Genre status: ${netflixBridge.genreStatus}` : null,
+      netflixBridge.genreIds?.length ? `Genre IDs: ${netflixBridge.genreIds.join(', ')}` : null,
+      typeof netflixBridge.animeConfirmed === 'boolean'
+        ? `Anime confirmado: ${netflixBridge.animeConfirmed ? 'SIM' : 'não'}`
+        : null,
+      netflixBridge.genreCheckedAt ? `Gêneros verificados em: ${formatTime(netflixBridge.genreCheckedAt)}` : null,
       netflixBridge.lastSeasonNumber ? `Temporada: ${netflixBridge.lastSeasonNumber}` : null,
       netflixBridge.lastEpisodeId
         ? `Episódio extraído: ${netflixBridge.lastEpisodeId}${netflixBridge.lastEpisodeNumber ? ` (E${netflixBridge.lastEpisodeNumber})` : ''}`
