@@ -11,6 +11,7 @@ describe('Crunchyroll network metadata', () => {
         episode_metadata: {
           episode_number: 3,
           season_id: 'SEASON123',
+          season_slug_title: 'the-detective-is-already-dead-portuguese-dub',
           series_id: 'G24H1N334',
           series_title: 'The Detective Is Already Dead',
           season_title: 'The Detective Is Already Dead (Portuguese Dub)',
@@ -22,6 +23,7 @@ describe('Crunchyroll network metadata', () => {
     expect(extractCrunchyrollNetworkEpisodes(payload)).toEqual([{
       episodeProviderId: 'G8WUN0X72',
       seasonProviderId: 'SEASON123',
+      seasonSlug: 'the-detective-is-already-dead-portuguese-dub',
       seriesProviderId: 'G24H1N334',
       seriesTitle: 'The Detective Is Already Dead',
       seasonTitle: 'The Detective Is Already Dead (Portuguese Dub)',
