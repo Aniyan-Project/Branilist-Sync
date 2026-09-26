@@ -18,6 +18,7 @@ const libraryItem = {
   progress: 1,
   score: 8.5,
   repeatCount: 0,
+  updatedAt: '2026-09-26T12:00:00Z',
   media: {
     id: 15,
     slug: 'the-detective-is-already-dead',
@@ -28,7 +29,13 @@ const libraryItem = {
       portuguese: 'O Detetive Já Está Morto',
     },
     coverImage: 'https://branilist.com/example.webp',
-    total: 12,
+    bannerImage: null,
+    description: null,
+    format: 'TV',
+    episodes: 12,
+    chapters: null,
+    averageScore: 74,
+    popularity: 100,
   },
 };
 
@@ -131,7 +138,7 @@ it('updates status, progress and half-star score from the detail screen', async 
       payload: { status: 'CURRENT', progress: 2, score: 9.5, repeatCount: 0 },
     });
   });
-  expect(document.querySelector('#detail-feedback')?.textContent).toBe('Lista atualizada.');
+  expect(document.querySelector('#detail-feedback')?.textContent).toBe('Lista atualizada com sucesso.');
 });
 
 it('keeps current page detection visible in the current tab', async () => {
@@ -143,4 +150,96 @@ it('keeps current page detection visible in the current tab', async () => {
   await import('../src/ui/popup/popup');
   await vi.waitFor(() => expect(document.querySelector('#current-media-title')?.textContent).toBe(currentMedia.title));
   expect(document.querySelector('#current-media-detail')?.textContent).toContain('episódio GMKUXG2E0');
+});
+
+
+it('filters the library by media type and increments progress with the quick action', async () => {
+  const mangaItem = {
+    ...structuredClone(libraryItem),
+    mediaId: 22,
+    progress: 4,
+    score: 7,
+    media: {
+      ...structuredClone(libraryItem.media),
+      id: 22,
+      slug: 'manga-test',
+      type: 'MANGA',
+      format: 'MANGA',
+      episodes: null,
+      chapters: 20,
+      title: { romaji: 'Manga Teste', english: 'Manga Test' },
+    },
+  };
+  const send = vi.fn(async (message: { type: string; mediaId?: number; payload?: unknown }) => {
+    if (message.type === 'AUTH_STATUS') return authState();
+    if (message.type === 'LIBRARY_GET') return { ok: true, items: [structuredClone(libraryItem), mangaItem] };
+    if (message.type === 'LIBRARY_UPDATE') return { ok: true };
+    return { ok: true };
+  });
+  vi.stubGlobal('chrome', { runtime: { sendMessage: send }, tabs: { create: vi.fn() } });
+
+  await import('../src/ui/popup/popup');
+  document.querySelector<HTMLButtonElement>('[data-tab="library"]')!.click();
+  await vi.waitFor(() => expect(document.querySelectorAll('.library-item')).toHaveLength(2));
+
+  const type = document.querySelector<HTMLSelectElement>('#library-type')!;
+  type.value = 'MANGA';
+  type.dispatchEvent(new Event('change'));
+  expect(document.querySelectorAll('.library-item')).toHaveLength(1);
+  expect(document.querySelector('.library-item strong')?.textContent).toBe('Manga Teste');
+
+  document.querySelector<HTMLButtonElement>('.quick-plus')!.click();
+  await vi.waitFor(() => expect(send).toHaveBeenCalledWith({
+    type: 'LIBRARY_UPDATE',
+    mediaId: 22,
+    payload: { status: 'CURRENT', progress: 5, score: 7, repeatCount: 0 },
+  }));
+});
+
+it('shows the safe Branilist match for the current detected page', async () => {
+  const state = authState();
+  state.lastSync = {
+    status: 'resolved',
+    updatedAt: '2026-09-26T12:00:00Z',
+    media: { ...currentMedia, canonicalUrl: 'https://www.crunchyroll.com/watch/GMKUXG2E0/example' },
+    result: {
+      matched: true,
+      mediaId: 15,
+      action: 'RESOLVED',
+      previousProgress: 0,
+      newProgress: 0,
+      confidence: 1,
+      requiresConfirmation: false,
+    },
+  } as never;
+  state.lastDetected = { ...currentMedia, canonicalUrl: 'https://www.crunchyroll.com/watch/GMKUXG2E0/example' } as never;
+
+  const send = vi.fn(async (message: { type: string }) => {
+    if (message.type === 'AUTH_STATUS') return state;
+    if (message.type === 'MEDIA_GET') return {
+      ok: true,
+      media: {
+        id: 15,
+        slug: 'the-detective-is-already-dead',
+        type: 'ANIME',
+        status: 'FINISHED',
+        format: 'TV',
+        title: libraryItem.media.title,
+        coverImage: libraryItem.media.coverImage,
+        episodes: 12,
+        chapters: null,
+        seasonYear: 2021,
+        averageScore: 74,
+        popularity: 100,
+        isAdult: false,
+      },
+    };
+    return { ok: true };
+  });
+  vi.stubGlobal('chrome', { runtime: { sendMessage: send }, tabs: { create: vi.fn() } });
+
+  await import('../src/ui/popup/popup');
+  await vi.waitFor(() => expect(document.querySelector('#current-match')?.hasAttribute('hidden')).toBe(false));
+  expect(document.querySelector('#current-branilist-title')?.textContent).toBe('Tantei wa Mou, Shindeiru.');
+  expect(document.querySelector('#current-branilist-meta')?.textContent).toContain('Correspondência segura');
 });
