@@ -6,7 +6,8 @@ const ANIME_GENRE_IDS = new Set([
 ]);
 
 export function netflixAnimeGenreIdsFromHtml(html: string): number[] {
-  const matches = html.match(/"genres"\s*:\s*\[[\s\S]{0,12000}?\]/gi) ?? [];
+  const normalized = html.replace(/\\\"/g, '"');
+  const matches = normalized.match(/"genres"\s*:\s*\[[\s\S]{0,12000}?\]/gi) ?? [];
   const ids = new Set<number>();
 
   for (const block of matches) {
@@ -24,6 +25,7 @@ export function netflixTitleLooksAnime(html: string): boolean {
   if (ids.some(id => ANIME_GENRE_IDS.has(id))) return true;
 
   // Conservative fallback for payloads that expose localized labels rather than IDs.
-  const genreBlocks = html.match(/"genres"\s*:\s*\[[\s\S]{0,12000}?\]/gi) ?? [];
+  const normalized = html.replace(/\\\"/g, '"');
+  const genreBlocks = normalized.match(/"genres"\s*:\s*\[[\s\S]{0,12000}?\]/gi) ?? [];
   return genreBlocks.some(block => /\banime\b/i.test(block));
 }
