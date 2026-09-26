@@ -12,6 +12,10 @@ export interface CrunchyrollBridgeDiagnostics {
   lastEpisodeId?: string;
   lastEpisodeNumber?: number;
   lastEpisodeAt?: string;
+  lastAnimeEligible?: boolean;
+  lastAnimeTitleId?: string;
+  metadataProbe?: string;
+  metadataProbeWatchId?: string;
 }
 
 export interface EpisodeNavigationState {
