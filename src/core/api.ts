@@ -2,12 +2,16 @@ import { accessToken, refreshAccessToken } from './auth';
 import type {
   BranilistProfile,
   DetectedMedia,
+  LibraryResponse,
+  LibraryUpdate,
+  MediaDetail,
   ProvidersResponse,
   ResolveResult,
 } from './types';
 import type { PendingEvent } from './sync-engine';
 
 const API_BASE = 'https://branilist.com/api/extension/v1';
+const PUBLIC_API_BASE = 'https://branilist.com/api/v1';
 
 type EventPayload = {
   provider: string;
@@ -76,6 +80,32 @@ async function jsonResponse<T>(response: Response, context: string): Promise<T> 
 
 export async function getMe(): Promise<BranilistProfile> {
   return jsonResponse<BranilistProfile>(await authorizedFetch('/me'), 'Perfil Branilist');
+}
+
+export async function getLibrary(): Promise<LibraryResponse> {
+  return jsonResponse<LibraryResponse>(
+    await authorizedFetch('/library'),
+    'Lista Branilist',
+  );
+}
+
+export async function updateLibrary(mediaId: number, payload: LibraryUpdate): Promise<void> {
+  const response = await authorizedFetch(`/library/${mediaId}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  await jsonResponse<{ ok: boolean; mediaId: number }>(response, 'Atualização da lista');
+}
+
+export async function getMediaDetail(mediaId: number): Promise<MediaDetail> {
+  const response = await fetch(`${PUBLIC_API_BASE}/media/${mediaId}`, {
+    method: 'GET',
+    credentials: 'omit',
+    redirect: 'error',
+    signal: AbortSignal.timeout(15000),
+  });
+  return jsonResponse<MediaDetail>(response, 'Detalhes da mídia');
 }
 
 export async function getProviders(): Promise<ProvidersResponse> {
