@@ -1,14 +1,41 @@
 import { extractCrunchyrollNetworkEpisodes } from '../providers/crunchyroll/network';
 
-const EVENT = 'branilist-sync:crunchyroll-network-episode';
-const relevant = (url: string) => /\/cms\/(?:objects|episodes?)\//i.test(url) || /\/cms\/objects(?:\?|$)/i.test(url);
+const EPISODE_EVENT = 'branilist-sync:crunchyroll-network-episode';
+const DIAG_EVENT = 'branilist-sync:crunchyroll-network-diagnostic';
+
+let jsonResponsesSeen = 0;
+
+function emitDiagnostic(payload: Record<string, unknown>) {
+  window.dispatchEvent(new CustomEvent(DIAG_EVENT, {
+    detail: JSON.stringify({
+      active: true,
+      jsonResponsesSeen,
+      ...payload,
+    }),
+  }));
+}
 
 function emitFrom(url: string, payload: unknown) {
-  if (!relevant(url)) return;
+  jsonResponsesSeen += 1;
+  const now = new Date().toISOString();
+  emitDiagnostic({
+    lastRequestUrl: url.slice(0, 1000),
+    lastRequestAt: now,
+  });
+
   for (const episode of extractCrunchyrollNetworkEpisodes(payload)) {
-    window.dispatchEvent(new CustomEvent(EVENT, { detail: JSON.stringify(episode) }));
+    emitDiagnostic({
+      lastEpisodeId: episode.episodeProviderId,
+      lastEpisodeNumber: episode.episode,
+      lastEpisodeAt: now,
+    });
+    window.dispatchEvent(new CustomEvent(EPISODE_EVENT, {
+      detail: JSON.stringify(episode),
+    }));
   }
 }
+
+emitDiagnostic({ startedAt: new Date().toISOString() });
 
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (...args: Parameters<typeof fetch>) => {
@@ -16,11 +43,9 @@ window.fetch = async (...args: Parameters<typeof fetch>) => {
   try {
     const input = args[0];
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    if (relevant(url)) {
-      const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-      if (contentType.includes('json')) {
-        void response.clone().json().then(data => emitFrom(url, data)).catch(() => undefined);
-      }
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    if (contentType.includes('json')) {
+      void response.clone().json().then(data => emitFrom(url, data)).catch(() => undefined);
     }
   } catch {
     // Never interfere with the site's own fetch response.
@@ -39,7 +64,7 @@ XMLHttpRequest.prototype.open = function (
   requestUrls.set(this, String(url));
   this.addEventListener('load', () => {
     const requestUrl = requestUrls.get(this);
-    if (!requestUrl || !relevant(requestUrl)) return;
+    if (!requestUrl) return;
     try {
       if (this.responseType === 'json' && this.response) {
         emitFrom(requestUrl, this.response);
@@ -50,7 +75,7 @@ XMLHttpRequest.prototype.open = function (
         if (contentType.includes('json')) emitFrom(requestUrl, JSON.parse(this.responseText));
       }
     } catch {
-      // Reading/cloning metadata must never break the player request.
+      // Observing metadata must never break the player request.
     }
   }, { once: true });
   return originalOpen.call(this, method, url, ...(rest as [boolean]));
