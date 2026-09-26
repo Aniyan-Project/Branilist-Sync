@@ -12,6 +12,7 @@ import type {
   NetflixBridgeDiagnostics,
   ProviderDiagnostics,
   SyncState,
+  TrackerSessionSummary,
 } from '../../core/types';
 
 const $ = <T extends Element = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
@@ -656,7 +657,15 @@ function renderDetailHero(entry: LibraryEntry, media: MediaDetail) {
 }
 
 async function refreshSession() {
-  const response = await chrome.runtime.sendMessage({ type: 'AUTH_STATUS' });
+  let activeTabId: number | undefined;
+  try {
+    const tabs = chrome.tabs.query ? await chrome.tabs.query({ active: true, currentWindow: true }) : [];
+    activeTabId = tabs[0]?.id;
+  } catch {
+    activeTabId = undefined;
+  }
+
+  const response = await chrome.runtime.sendMessage({ type: 'AUTH_STATUS', activeTabId });
   if (!response?.ok) throw new Error(response?.error ?? 'Não foi possível consultar o estado.');
 
   authenticated = Boolean(response.authenticated);
@@ -680,6 +689,11 @@ async function refreshSession() {
 
   const providerDiagnostics = (response.providerDiagnostics ?? null) as ProviderDiagnostics | null;
   const bridge = (response.bridgeDiagnostics ?? null) as CrunchyrollBridgeDiagnostics | null;
+  const sessionSummaries = (response.sessions ?? []) as TrackerSessionSummary[];
+  const activeSessionKey = typeof response.activeSessionKey === 'string' ? response.activeSessionKey : undefined;
+  const otherActiveSessions = sessionSummaries.filter(session =>
+    session.key !== activeSessionKey && session.active
+  );
   const providerName = providerDiagnostics?.providerId === 'crunchyroll'
     ? 'Crunchyroll'
     : providerDiagnostics?.providerId === 'netflix'
@@ -687,6 +701,9 @@ async function refreshSession() {
       : providerDiagnostics?.providerId ?? 'desconhecido';
   const diagnosticLines: Array<string | null> = providerDiagnostics
     ? [
+        otherActiveSessions.length
+          ? `Outras sessões ativas: ${otherActiveSessions.length}`
+          : null,
         `Provider: ${providerName} — ${providerDiagnostics.active ? 'ATIVO' : 'inativo'}`,
         providerDiagnostics.lastProbeAt ? `Último probe: ${formatTime(providerDiagnostics.lastProbeAt)}` : null,
         providerDiagnostics.lastDetectedAt ? `Última detecção: ${formatTime(providerDiagnostics.lastDetectedAt)}` : null,
