@@ -22,6 +22,20 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
   const task = async () => {
     await ready;
     if (!message || typeof message.type !== 'string') throw new Error('Mensagem inválida.');
+    if (message.type === 'TRACKER_CLEARED') {
+      const senderUrl = sender.url ? new URL(sender.url) : null;
+      const currentUrl = new URL(message.payload.canonicalUrl);
+      if (
+        message.payload.providerId !== 'crunchyroll' ||
+        !senderUrl ||
+        !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname) ||
+        currentUrl.origin !== senderUrl.origin ||
+        !['www.crunchyroll.com', 'crunchyroll.com'].includes(currentUrl.hostname) ||
+        /\/watch\/[A-Z0-9]{4,32}(?:\/|$)/i.test(currentUrl.pathname)
+      ) throw new Error('Limpeza de página inválida.');
+      await chrome.storage.local.remove([DETECTED, NAVIGATION]);
+      return { ok: true };
+    }
     if (message.type === 'BRIDGE_DIAGNOSTIC') {
       const senderUrl = sender.url ? new URL(sender.url) : null;
       if (!senderUrl || !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname)) throw new Error('Diagnóstico inválido.');
@@ -33,12 +47,14 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (message.type === 'EPISODE_NAVIGATED') {
       const payload = message.payload as EpisodeNavigationState;
       const senderUrl = sender.url ? new URL(sender.url) : null;
+      const currentUrl = new URL(payload.canonicalUrl);
       if (
         payload.providerId !== 'crunchyroll' ||
         !/^[A-Z0-9]{4,32}$/i.test(payload.episodeProviderId) ||
         !senderUrl ||
         !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname) ||
-        !senderUrl.pathname.includes('/watch/' + payload.episodeProviderId)
+        currentUrl.origin !== senderUrl.origin ||
+        !currentUrl.pathname.includes('/watch/' + payload.episodeProviderId)
       ) throw new Error('Mudança de episódio inválida.');
       await chrome.storage.local.set({ [NAVIGATION]: payload });
       return { ok: true, settings: await loadSettings() };
