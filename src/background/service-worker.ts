@@ -5,12 +5,13 @@ import { trustedPopup, validateDetection } from '../core/message-policy';
 import { loadSettings, saveSettings } from '../core/settings';
 import { providerById } from '../core/provider-registry';
 import { crunchyrollLegacyMappingIds } from '../providers/crunchyroll/identity';
-import type { CrunchyrollBridgeDiagnostics, CurrentResolution, DetectedMedia, EpisodeNavigationState, ExtensionMessage } from '../core/types';
+import type { CrunchyrollBridgeDiagnostics, CurrentResolution, DetectedMedia, EpisodeNavigationState, ExtensionMessage, ProviderDiagnostics } from '../core/types';
 
 const KEY = 'branilist.sync.v4';
 const DETECTED = 'branilist.detected';
 const NAVIGATION = 'branilist.episode-navigation';
 const BRIDGE_DIAG = 'branilist.crunchyroll-bridge-diagnostics';
+const PROVIDER_DIAG = 'branilist.provider-diagnostics';
 const CURRENT_RESOLUTION = 'branilist.current-resolution';
 const ready = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 const engine = new SyncEngine({
@@ -61,6 +62,14 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         !provider.hosts.includes(currentUrl.hostname) ||
         provider.matches(currentUrl)
       ) throw new Error('Limpeza de página inválida.');
+      const previous = (await chrome.storage.local.get(PROVIDER_DIAG))[PROVIDER_DIAG] as ProviderDiagnostics | undefined;
+      const providerDiagnostics: ProviderDiagnostics = {
+        ...(previous?.providerId === message.payload.providerId ? previous : { providerId: message.payload.providerId }),
+        providerId: message.payload.providerId,
+        active: false,
+        lastClearedAt: new Date().toISOString(),
+      };
+      await chrome.storage.local.set({ [PROVIDER_DIAG]: providerDiagnostics });
       await chrome.storage.local.remove([DETECTED, NAVIGATION, CURRENT_RESOLUTION]);
       return { ok: true };
     }
@@ -89,7 +98,16 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     }
     if (message.type === 'TRACKER_DETECTED' || message.type === 'SYNC_PROGRESS') {
       const media = validateDetection(message.payload, sender);
-      await chrome.storage.local.set({ [DETECTED]: media });
+      const providerDiagnostics: ProviderDiagnostics = {
+        providerId: media.providerId,
+        active: true,
+        lastDetectedAt: new Date().toISOString(),
+        lastCanonicalUrl: media.canonicalUrl,
+        lastEpisodeId: media.providerEpisodeId,
+        lastEpisodeNumber: media.episode,
+        lastProgressPercent: media.progressPercent,
+      };
+      await chrome.storage.local.set({ [DETECTED]: media, [PROVIDER_DIAG]: providerDiagnostics });
       await chrome.storage.local.remove([NAVIGATION]);
       if (message.type === 'TRACKER_DETECTED') {
         const [status, settings] = await Promise.all([authStatus(), loadSettings()]);
@@ -133,12 +151,12 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (message.type === 'SETTINGS_SET') return { ok: true, settings: await saveSettings(message.payload) };
     if (message.type === 'AUTH_LOGIN') {
       await login();
-      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, CURRENT_RESOLUTION]);
+      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, PROVIDER_DIAG, CURRENT_RESOLUTION]);
       return { ok: true };
     }
     if (message.type === 'AUTH_LOGOUT') {
       await logout();
-      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, CURRENT_RESOLUTION]);
+      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, PROVIDER_DIAG, CURRENT_RESOLUTION]);
       return { ok: true };
     }
     if (message.type === 'SYNC_RETRY') return { ok: true, lastSync: await engine.run(undefined, message.retryId) };
@@ -167,6 +185,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         lastDetected: (await chrome.storage.local.get(DETECTED))[DETECTED] as DetectedMedia | undefined,
         episodeNavigation: (await chrome.storage.local.get(NAVIGATION))[NAVIGATION] as EpisodeNavigationState | undefined,
         bridgeDiagnostics: (await chrome.storage.local.get(BRIDGE_DIAG))[BRIDGE_DIAG] as CrunchyrollBridgeDiagnostics | undefined,
+        providerDiagnostics: (await chrome.storage.local.get(PROVIDER_DIAG))[PROVIDER_DIAG] as ProviderDiagnostics | undefined,
         currentResolution: (await chrome.storage.local.get(CURRENT_RESOLUTION))[CURRENT_RESOLUTION] as CurrentResolution | undefined,
         pending: snapshot.events.filter(event => ['resolved', 'error', 'confirmation_required'].includes(event.state.status)).map(event => event.state),
         history: snapshot.events.slice(-20).reverse().map(event => ({ ...event.state, occurredAt: event.occurredAt })),
