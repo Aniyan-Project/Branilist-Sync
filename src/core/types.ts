@@ -2,6 +2,14 @@ export type MediaKind = 'ANIME' | 'MANGA';
 export type MediaTitleLanguage = 'AUTO' | 'PORTUGUESE' | 'ENGLISH' | 'ROMAJI' | 'NATIVE';
 export type LibraryStatus = 'PLANNING' | 'CURRENT' | 'COMPLETED' | 'PAUSED' | 'DROPPED';
 
+export interface EpisodeNavigationState {
+  providerId: string;
+  previousEpisodeId?: string;
+  episodeProviderId: string;
+  canonicalUrl: string;
+  detectedAt: string;
+}
+
 export interface ExtensionSettings {
   autoSync: boolean;
   showToast: boolean;
@@ -169,6 +177,7 @@ export interface TrackerProvider {
 export type ExtensionMessage =
   | { type: 'SYNC_RETRY'; retryId: string }
   | { type: 'TRACKER_DETECTED'; payload: DetectedMedia }
+  | { type: 'EPISODE_NAVIGATED'; payload: EpisodeNavigationState }
   | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
