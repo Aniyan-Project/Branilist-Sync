@@ -121,3 +121,45 @@ it('remounts detection when Crunchyroll SPA metadata switches to the next episod
     payload: nextMedia,
   });
 });
+
+
+it('uses the live Crunchyroll URL as authority even while canonical metadata is stale', async () => {
+  const nextUrl = 'https://www.crunchyroll.com/pt-br/watch/GNEXT123/next';
+  const nextMedia = {
+    ...media,
+    providerEpisodeId: 'GNEXT123',
+    episode: 2,
+    canonicalUrl: nextUrl,
+  };
+
+  const staleCanonical = document.createElement('link');
+  staleCanonical.rel = 'canonical';
+  staleCanonical.href = media.canonicalUrl;
+  document.head.append(staleCanonical);
+
+  mocks.detect
+    .mockResolvedValueOnce(media)
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce(nextMedia);
+
+  await import('../src/content/index');
+  await Promise.resolve();
+  expect(mocks.detect).toHaveBeenCalledTimes(1);
+
+  (location as unknown as URL).href = nextUrl;
+  await vi.advanceTimersByTimeAsync(550);
+  await Promise.resolve();
+
+  expect(mocks.detect).toHaveBeenCalledTimes(2);
+
+  staleCanonical.href = nextUrl;
+  await Promise.resolve();
+  await vi.advanceTimersByTimeAsync(550);
+  await Promise.resolve();
+
+  expect(mocks.detect).toHaveBeenCalledTimes(3);
+  expect(chrome.runtime.sendMessage).toHaveBeenLastCalledWith({
+    type: 'TRACKER_DETECTED',
+    payload: nextMedia,
+  });
+});
