@@ -9,6 +9,7 @@ import type {
   LibraryStatus,
   MediaDetail,
   MediaTitleLanguage,
+  ProviderDiagnostics,
   SyncState,
 } from '../../core/types';
 
@@ -676,18 +677,44 @@ async function refreshSession() {
     ? `Client: ${response.oauth.clientId}\nID: ${response.oauth.extensionId}\nCallback: ${response.oauth.redirectUri}`
     : '';
 
+  const providerDiagnostics = (response.providerDiagnostics ?? null) as ProviderDiagnostics | null;
   const bridge = (response.bridgeDiagnostics ?? null) as CrunchyrollBridgeDiagnostics | null;
-  bridgeDiagnosticsEl.textContent = bridge
+  const providerName = providerDiagnostics?.providerId === 'crunchyroll'
+    ? 'Crunchyroll'
+    : providerDiagnostics?.providerId === 'netflix'
+      ? 'Netflix'
+      : providerDiagnostics?.providerId ?? 'desconhecido';
+  const diagnosticLines: Array<string | null> = providerDiagnostics
     ? [
-        `Bridge: ${bridge.active ? 'ATIVO' : 'inativo'}`,
-        `JSONs observados: ${bridge.jsonResponsesSeen ?? 0}`,
-        bridge.startedAt ? `Iniciado: ${formatTime(bridge.startedAt)}` : null,
-        bridge.lastRequestAt ? `Última resposta: ${formatTime(bridge.lastRequestAt)}` : null,
-        bridge.lastRequestUrl ? `Última URL: ${bridge.lastRequestUrl}` : null,
-        bridge.lastEpisodeId ? `Último episódio extraído: ${bridge.lastEpisodeId}${bridge.lastEpisodeNumber ? ` (E${bridge.lastEpisodeNumber})` : ''}` : 'Último episódio extraído: nenhum',
-        bridge.lastEpisodeAt ? `Extraído em: ${formatTime(bridge.lastEpisodeAt)}` : null,
-      ].filter(Boolean).join('\n')
-    : 'Bridge: sem sinal recebido ainda.';
+        `Provider: ${providerName} — ${providerDiagnostics.active ? 'ATIVO' : 'inativo'}`,
+        providerDiagnostics.lastDetectedAt ? `Última detecção: ${formatTime(providerDiagnostics.lastDetectedAt)}` : null,
+        providerDiagnostics.lastCanonicalUrl ? `Última página: ${providerDiagnostics.lastCanonicalUrl}` : null,
+        providerDiagnostics.lastEpisodeId
+          ? `Último episódio: ${providerDiagnostics.lastEpisodeId}${providerDiagnostics.lastEpisodeNumber ? ` (E${providerDiagnostics.lastEpisodeNumber})` : ''}`
+          : null,
+        Number.isFinite(providerDiagnostics.lastProgressPercent)
+          ? `Último progresso: ${providerDiagnostics.lastProgressPercent}%`
+          : null,
+        providerDiagnostics.lastClearedAt ? `Saiu do player em: ${formatTime(providerDiagnostics.lastClearedAt)}` : null,
+      ]
+    : ['Provider: sem detecção recebida ainda.'];
+
+  if (bridge && (!providerDiagnostics || providerDiagnostics.providerId === 'crunchyroll')) {
+    diagnosticLines.push(
+      '',
+      `Bridge Crunchyroll: ${bridge.active ? 'ATIVO' : 'inativo'}`,
+      `JSONs observados: ${bridge.jsonResponsesSeen ?? 0}`,
+      bridge.startedAt ? `Iniciado: ${formatTime(bridge.startedAt)}` : null,
+      bridge.lastRequestAt ? `Última resposta: ${formatTime(bridge.lastRequestAt)}` : null,
+      bridge.lastRequestUrl ? `Última URL: ${bridge.lastRequestUrl}` : null,
+      bridge.lastEpisodeId
+        ? `Último episódio extraído: ${bridge.lastEpisodeId}${bridge.lastEpisodeNumber ? ` (E${bridge.lastEpisodeNumber})` : ''}`
+        : 'Último episódio extraído: nenhum',
+      bridge.lastEpisodeAt ? `Extraído em: ${formatTime(bridge.lastEpisodeAt)}` : null,
+    );
+  }
+
+  bridgeDiagnosticsEl.textContent = diagnosticLines.filter((line): line is string => line !== null).join('\n');
 
   settings = response.settings ?? settings;
   history = response.history ?? [];
