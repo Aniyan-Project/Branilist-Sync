@@ -11,7 +11,8 @@ export const netflixProvider: TrackerProvider = {
   },
 
   async detect() {
-    // Provider intencionalmente desativado até termos fixtures/seletores confiáveis.
+    // Netflix detection is network-driven by the dedicated MAIN/ISOLATED bridge.
+    // Keep the registry entry for provider discovery and future DOM fallback work.
     return null;
   },
 };
