@@ -687,6 +687,8 @@ async function refreshSession() {
         bridge.lastRequestUrl ? `Última URL: ${bridge.lastRequestUrl}` : null,
         bridge.lastEpisodeId ? `Último episódio extraído: ${bridge.lastEpisodeId}${bridge.lastEpisodeNumber ? ` (E${bridge.lastEpisodeNumber})` : ''}` : 'Último episódio extraído: nenhum',
         bridge.lastEpisodeAt ? `Extraído em: ${formatTime(bridge.lastEpisodeAt)}` : null,
+        bridge.metadataProbe ? `Probe de metadata: ${bridge.metadataProbe}${bridge.metadataProbeWatchId ? ` (${bridge.metadataProbeWatchId})` : ''}` : null,
+        typeof bridge.lastAnimeEligible === 'boolean' ? `Elegível como anime: ${bridge.lastAnimeEligible ? 'sim' : 'não'}` : null,
       ].filter(Boolean).join('\n')
     : 'Bridge: sem sinal recebido ainda.';
 
