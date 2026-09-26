@@ -153,6 +153,9 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       const safeGenreSource = payload.genreSource === 'ids' || payload.genreSource === 'labels' || payload.genreSource === 'none'
         ? payload.genreSource
         : previous.genreSource;
+      const safeGenreFetchMode = payload.genreFetchMode === 'public'
+        ? payload.genreFetchMode
+        : previous.genreFetchMode;
       const next: NetflixBridgeDiagnostics = {
         ...previous,
         ...payload,
@@ -173,6 +176,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         genreIds: safeGenreIds,
         genreLabels: safeGenreLabels,
         genreSource: safeGenreSource,
+        genreFetchMode: safeGenreFetchMode,
         animeConfirmed: typeof payload.animeConfirmed === 'boolean'
           ? payload.animeConfirmed
           : previous.animeConfirmed,
