@@ -67,3 +67,25 @@ it('uses series identity when season identity is unavailable', () => {
     providerSeriesId: 'SERIES123',
   });
 });
+
+
+it('accepts a stable series plus season slug identity for Crunchyroll', () => {
+  const value = {
+    ...media,
+    providerMediaId: 'SERIES123|season-one-portuguese-dub',
+    providerEpisodeId: 'G123',
+    providerSeriesId: 'SERIES123',
+    providerSeasonSlug: 'season-one-portuguese-dub',
+  };
+  expect(validateDetection(value, {
+    id,
+    url,
+    frameId: 0,
+    tab: {} as chrome.tabs.Tab,
+  })).toMatchObject({
+    providerMediaId: 'SERIES123|season-one-portuguese-dub',
+    providerEpisodeId: 'G123',
+    providerSeriesId: 'SERIES123',
+    providerSeasonSlug: 'season-one-portuguese-dub',
+  });
+});
