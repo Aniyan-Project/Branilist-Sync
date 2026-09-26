@@ -20,7 +20,13 @@ const width = icon128.readUInt32BE(16);
 const height = icon128.readUInt32BE(20);
 if (width !== 128 || height !== 128) throw new Error(`Invalid 128px icon dimensions: ${width}x${height}`);
 
-// MV3 content_scripts are classic scripts: imports/exports must fail this check.
-new vm.Script(await readFile('dist/assets/content.js', 'utf8'));
+// MV3 content scripts are classic scripts: imports/exports must fail this check.
+for (const path of ['dist/assets/content.js', 'dist/assets/network-bridge.js']) {
+  new vm.Script(await readFile(path, 'utf8'));
+}
+const mainBridge = manifest.content_scripts.find(script => script.js?.includes('assets/network-bridge.js'));
+if (!mainBridge || mainBridge.world !== 'MAIN' || mainBridge.run_at !== 'document_start') {
+  throw new Error('Crunchyroll network bridge must run in MAIN at document_start');
+}
 if (manifest.optional_host_permissions?.length) throw new Error('Unexpected optional hosts');
 console.log(`Validated Chrome package ${pkg.version}`);
