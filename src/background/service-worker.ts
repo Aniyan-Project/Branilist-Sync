@@ -3,12 +3,13 @@ import { getLibrary, getMe, getMediaDetail, resolveMedia, saveUserMapping, syncP
 import { SyncEngine, type SyncSnapshot } from '../core/sync-engine';
 import { trustedPopup, validateDetection } from '../core/message-policy';
 import { loadSettings, saveSettings } from '../core/settings';
-import type { CrunchyrollBridgeDiagnostics, DetectedMedia, EpisodeNavigationState, ExtensionMessage } from '../core/types';
+import type { CrunchyrollBridgeDiagnostics, CurrentResolution, DetectedMedia, EpisodeNavigationState, ExtensionMessage } from '../core/types';
 
 const KEY = 'branilist.sync.v4';
 const DETECTED = 'branilist.detected';
 const NAVIGATION = 'branilist.episode-navigation';
 const BRIDGE_DIAG = 'branilist.crunchyroll-bridge-diagnostics';
+const CURRENT_RESOLUTION = 'branilist.current-resolution';
 const ready = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 const engine = new SyncEngine({
   load: async () => (await chrome.storage.local.get(KEY))[KEY] as SyncSnapshot | undefined,
@@ -33,7 +34,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         !['www.crunchyroll.com', 'crunchyroll.com'].includes(currentUrl.hostname) ||
         /\/watch\/[A-Z0-9]{4,32}(?:\/|$)/i.test(currentUrl.pathname)
       ) throw new Error('Limpeza de página inválida.');
-      await chrome.storage.local.remove([DETECTED, NAVIGATION]);
+      await chrome.storage.local.remove([DETECTED, NAVIGATION, CURRENT_RESOLUTION]);
       return { ok: true };
     }
     if (message.type === 'BRIDGE_DIAGNOSTIC') {
@@ -65,10 +66,21 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       await chrome.storage.local.remove([NAVIGATION]);
       if (message.type === 'TRACKER_DETECTED') {
         const [status, settings] = await Promise.all([authStatus(), loadSettings()]);
-        if (!status.authenticated) return { ok: true, authenticated: false, settings };
+        if (!status.authenticated) {
+          await chrome.storage.local.remove([CURRENT_RESOLUTION]);
+          return { ok: true, authenticated: false, settings };
+        }
         try {
-          return { ok: true, authenticated: true, settings, result: await resolveMedia(media) };
+          const result = await resolveMedia(media);
+          const currentResolution: CurrentResolution = {
+            media,
+            result,
+            resolvedAt: new Date().toISOString(),
+          };
+          await chrome.storage.local.set({ [CURRENT_RESOLUTION]: currentResolution });
+          return { ok: true, authenticated: true, settings, result };
         } catch {
+          await chrome.storage.local.remove([CURRENT_RESOLUTION]);
           return { ok: true, authenticated: true, settings, resolveError: true };
         }
       }
@@ -81,7 +93,12 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       if (!Number.isSafeInteger(message.payload.mediaId) || message.payload.mediaId < 1) throw new Error('Mídia Branilist inválida.');
       await saveUserMapping(media, message.payload.mediaId);
       const result = await resolveMedia(media);
-      await chrome.storage.local.set({ [DETECTED]: media });
+      const currentResolution: CurrentResolution = {
+        media,
+        result,
+        resolvedAt: new Date().toISOString(),
+      };
+      await chrome.storage.local.set({ [DETECTED]: media, [CURRENT_RESOLUTION]: currentResolution });
       return { ok: true, result };
     }
     if (message.type === 'SETTINGS_GET') return { ok: true, settings: await loadSettings() };
@@ -89,12 +106,12 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (message.type === 'SETTINGS_SET') return { ok: true, settings: await saveSettings(message.payload) };
     if (message.type === 'AUTH_LOGIN') {
       await login();
-      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG]);
+      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, CURRENT_RESOLUTION]);
       return { ok: true };
     }
     if (message.type === 'AUTH_LOGOUT') {
       await logout();
-      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG]);
+      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, CURRENT_RESOLUTION]);
       return { ok: true };
     }
     if (message.type === 'SYNC_RETRY') return { ok: true, lastSync: await engine.run(undefined, message.retryId) };
@@ -123,6 +140,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         lastDetected: (await chrome.storage.local.get(DETECTED))[DETECTED] as DetectedMedia | undefined,
         episodeNavigation: (await chrome.storage.local.get(NAVIGATION))[NAVIGATION] as EpisodeNavigationState | undefined,
         bridgeDiagnostics: (await chrome.storage.local.get(BRIDGE_DIAG))[BRIDGE_DIAG] as CrunchyrollBridgeDiagnostics | undefined,
+        currentResolution: (await chrome.storage.local.get(CURRENT_RESOLUTION))[CURRENT_RESOLUTION] as CurrentResolution | undefined,
         pending: snapshot.events.filter(event => ['resolved', 'error', 'confirmation_required'].includes(event.state.status)).map(event => event.state),
         history: snapshot.events.slice(-20).reverse().map(event => ({ ...event.state, occurredAt: event.occurredAt })),
         lastSync: snapshot.lastSync };
