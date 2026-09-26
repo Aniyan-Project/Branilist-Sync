@@ -1,6 +1,7 @@
 import type {
   BranilistProfile,
   DetectedMedia,
+  ExtensionSettings,
   LibraryEntry,
   LibraryStatus,
   MediaDetail,
@@ -27,6 +28,15 @@ const currentCover = $('#current-cover') as HTMLImageElement;
 const currentBranilistTitle = $('#current-branilist-title');
 const currentBranilistMeta = $('#current-branilist-meta');
 const currentOpen = $('#current-open') as HTMLButtonElement;
+const currentOpenFallback = $('#current-open-fallback') as HTMLButtonElement;
+const currentProgress = $('#current-progress');
+const currentList = $('#current-list');
+const currentStatus = $('#current-status') as HTMLSelectElement;
+const currentScore = $('#current-score') as HTMLInputElement;
+const currentPlus = $('#current-plus') as HTMLButtonElement;
+const currentSave = $('#current-save') as HTMLButtonElement;
+const currentFeedback = $('#current-feedback');
+const currentFlow = $('#current-flow');
 
 const pendingContentEl = $('#pending-content');
 const pendingEmptyEl = $('#pending-empty');
@@ -61,6 +71,14 @@ const detailRepeat = $('#detail-repeat') as HTMLInputElement;
 const detailSave = $('#detail-save') as HTMLButtonElement;
 const detailFeedback = $('#detail-feedback');
 
+const historyList = $('#history-list');
+const historyEmpty = $('#history-empty');
+const settingAutoSync = $('#setting-auto-sync') as HTMLInputElement;
+const settingShowToast = $('#setting-show-toast') as HTMLInputElement;
+const settingToastDuration = $('#setting-toast-duration') as HTMLInputElement;
+const settingQuickStart = $('#setting-quick-start') as HTMLInputElement;
+const settingsFeedback = $('#settings-feedback');
+
 let authenticated = false;
 let profile: BranilistProfile | null = null;
 let retryId: string | undefined;
@@ -69,6 +87,14 @@ let library: LibraryEntry[] = [];
 let libraryLoaded = false;
 let selectedEntry: LibraryEntry | null = null;
 let currentMatchedMedia: MediaDetail | null = null;
+let currentEntry: LibraryEntry | null = null;
+let history: Array<SyncState & { occurredAt?: string }> = [];
+let settings: ExtensionSettings = {
+  autoSync: true,
+  showToast: true,
+  toastDurationSeconds: 30,
+  quickPlusStartsCurrent: true,
+};
 
 const statusLabels: Record<LibraryStatus, string> = {
   PLANNING: 'Planejando',
