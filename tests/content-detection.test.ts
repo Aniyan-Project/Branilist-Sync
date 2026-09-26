@@ -1,0 +1,94 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  detect: vi.fn(),
+  observe: vi.fn(),
+  toast: vi.fn(),
+}));
+
+vi.mock('../src/core/provider-registry', () => ({
+  providerForUrl: () => ({
+    id: 'crunchyroll',
+    name: 'Crunchyroll',
+    hosts: ['www.crunchyroll.com'],
+    kind: 'ANIME',
+    matches: () => true,
+    detect: mocks.detect,
+    observe: mocks.observe,
+  }),
+}));
+
+vi.mock('../src/content/toast', () => ({
+  showDetectionToast: mocks.toast,
+}));
+
+const media = {
+  providerId: 'crunchyroll',
+  providerMediaId: 'SEASON123',
+  providerEpisodeId: 'GMKUXG2E0',
+  providerSeasonId: 'SEASON123',
+  providerSeriesId: 'G24H1N334',
+  kind: 'ANIME',
+  title: 'The Detective Is Already Dead',
+  episode: 1,
+  canonicalUrl: 'https://www.crunchyroll.com/pt-br/watch/GMKUXG2E0/example',
+};
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.resetModules();
+  mocks.detect.mockReset();
+  mocks.observe.mockReset();
+  mocks.toast.mockReset();
+  mocks.observe.mockReturnValue(() => undefined);
+  history.replaceState({}, '', '/pt-br/watch/GMKUXG2E0/example');
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    value: new URL('https://www.crunchyroll.com/pt-br/watch/GMKUXG2E0/example'),
+  });
+  vi.stubGlobal('chrome', {
+    runtime: {
+      sendMessage: vi.fn().mockResolvedValue({
+        ok: true,
+        authenticated: true,
+        result: { matched: true, mediaId: 15, requiresConfirmation: false },
+      }),
+    },
+  });
+});
+
+afterEach(() => {
+  window.dispatchEvent(new Event('pagehide'));
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+it('retries detection on the same URL until Crunchyroll metadata becomes available', async () => {
+  mocks.detect
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce(media);
+
+  await import('../src/content/index');
+  await vi.advanceTimersByTimeAsync(1600);
+  await Promise.resolve();
+
+  expect(mocks.detect).toHaveBeenCalledTimes(3);
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'TRACKER_DETECTED',
+    payload: media,
+  });
+  expect(mocks.toast).toHaveBeenCalledTimes(1);
+});
+
+it('does not keep detecting after the first successful detection', async () => {
+  mocks.detect.mockResolvedValue(media);
+
+  await import('../src/content/index');
+  await Promise.resolve();
+  await vi.advanceTimersByTimeAsync(5000);
+
+  expect(mocks.detect).toHaveBeenCalledTimes(1);
+  expect(mocks.toast).toHaveBeenCalledTimes(1);
+});
