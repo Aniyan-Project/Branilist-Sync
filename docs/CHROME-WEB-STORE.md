@@ -1,11 +1,33 @@
-# v0.4 — preparar e publicar
+# v0.4.1 — preparar e publicar
 
 ## Estado desta versão
 
-A v0.4 prepara o pacote e automatiza verificações. Ainda não existe item/ID na
-Chrome Web Store. Login real com ID definitivo, páginas reais do Crunchyroll e
+O rascunho na Chrome Web Store já existe com ID `kimfpnbfjfmpkjpcmfnjeoefakhcoclh`.
+A chave pública fornecida pelo responsável foi validada e incluída no manifest.
+Login real com ID definitivo, páginas reais do Crunchyroll e
 aprovação da loja permanecem pendentes. CI verde não certifica esses passos.
 As fixtures são sintéticas e reduzidas; não foram capturadas de uma conta real.
+
+## Próximos passos para o item existente
+
+1. Envie o ZIP **0.4.1** como novo pacote no mesmo item de rascunho; não crie outro item.
+2. Para testar localmente, extraia o ZIP, carregue a pasta em `chrome://extensions`
+   e confira o ID `kimfpnbfjfmpkjpcmfnjeoefakhcoclh`. Desative a instalação anterior
+   sem chave, caso ainda esteja carregada com outro ID.
+3. Um operador provisiona o client no backend, a partir de `apps/api`, com o
+   `DATABASE_URL` do ambiente correto e seu ID de usuário existente:
+
+   ```sh
+   go run ./cmd/sync-client -owner <ID_DO_OPERADOR_EXISTENTE> -extension-id kimfpnbfjfmpkjpcmfnjeoefakhcoclh
+   ```
+
+4. O callback cadastrado precisa ser exatamente
+   `https://kimfpnbfjfmpkjpcmfnjeoefakhcoclh.chromiumapp.org/oauth2` no client
+   público `branilist-sync`. Execute o smoke de login/playback abaixo antes da submissão.
+
+O provisionamento não foi executado por esta atualização: depende de acesso ao
+ambiente do backend e do ID do operador. A checagem da chave/ID não prova que o
+client já está cadastrado ou que o login foi validado em produção.
 
 ## Primeiro envio: criar o rascunho e obter o ID
 
