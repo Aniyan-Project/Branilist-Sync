@@ -168,34 +168,33 @@ it('does not report or toast the same Netflix episode more than once', async () 
   mocks.detect.mockResolvedValue(first);
 
   await import('../src/content/index');
-  await Promise.resolve();
+  await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledTimes(1));
 
-  const event = new CustomEvent('branilist-sync:netflix-network-episode', {
-    detail: JSON.stringify({
-      episodeProviderId: '81234567',
-      seasonProviderId: '1',
-      seriesProviderId: '90000001',
-      seriesTitle: 'Example Anime',
-      season: 1,
-      episode: 1,
-    }),
+  vi.mocked(chrome.runtime.sendMessage).mockClear();
+  mocks.toast.mockClear();
+
+  const detail = JSON.stringify({
+    episodeProviderId: '81234567',
+    seasonProviderId: '1',
+    seriesProviderId: '90000001',
+    seriesTitle: 'Example Anime',
+    season: 1,
+    episode: 1,
   });
 
-  window.dispatchEvent(event);
+  window.dispatchEvent(new CustomEvent('branilist-sync:netflix-network-episode', { detail }));
   await Promise.resolve();
   await Promise.resolve();
 
-  window.dispatchEvent(new CustomEvent('branilist-sync:netflix-network-episode', {
-    detail: event.detail,
-  }));
+  window.dispatchEvent(new CustomEvent('branilist-sync:netflix-network-episode', { detail }));
   await Promise.resolve();
   await Promise.resolve();
 
   const detectedCalls = vi.mocked(chrome.runtime.sendMessage).mock.calls
     .filter(([message]) => message?.type === 'TRACKER_DETECTED');
 
-  expect(detectedCalls).toHaveLength(1);
-  expect(mocks.toast).toHaveBeenCalledTimes(1);
+  expect(detectedCalls).toHaveLength(0);
+  expect(mocks.toast).toHaveBeenCalledTimes(0);
 });
 
 it('does not remount Netflix when only volatile player title DOM changes', async () => {
