@@ -679,6 +679,7 @@ async function refreshSession() {
   const bridge = (response.bridgeDiagnostics ?? null) as CrunchyrollBridgeDiagnostics | null;
   bridgeDiagnosticsEl.textContent = bridge
     ? [
+        `Provider: ${bridge.providerId ?? 'desconhecido'}`,
         `Bridge: ${bridge.active ? 'ATIVO' : 'inativo'}`,
         `JSONs observados: ${bridge.jsonResponsesSeen ?? 0}`,
         bridge.startedAt ? `Iniciado: ${formatTime(bridge.startedAt)}` : null,
