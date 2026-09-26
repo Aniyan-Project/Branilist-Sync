@@ -17,4 +17,9 @@ describe('Netflix anime eligibility', () => {
     const html = '<script>{"genres":[{"id":999999,"name":"Anime Series"}]}</script>';
     expect(netflixTitleLooksAnime(html)).toBe(true);
   });
+
+  it('parses escaped JSON blobs from the title page', () => {
+    const html = '<script>{\\"genres\\":[{\\"id\\":7424,\\"name\\":\\"Anime\\"}]}</script>';
+    expect(netflixTitleLooksAnime(html)).toBe(true);
+  });
 });
