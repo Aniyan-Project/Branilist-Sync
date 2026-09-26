@@ -1,6 +1,7 @@
 import type {
   BranilistProfile,
   CrunchyrollBridgeDiagnostics,
+  CurrentResolution,
   DetectedMedia,
   EpisodeNavigationState,
   ExtensionSettings,
@@ -213,25 +214,41 @@ function renderHistory() {
   }
 }
 
-function renderCurrentFlow(lastSync?: SyncState | null) {
+function renderCurrentFlow(
+  media: DetectedMedia | null,
+  currentResolution?: CurrentResolution | null,
+  lastSync?: SyncState | null,
+) {
   currentFlow.replaceChildren();
-  if (!lastSync) return;
+  if (!media) return;
+
+  const resolutionMatches = currentResolution?.media?.canonicalUrl === media.canonicalUrl;
+  const syncMatches = lastSync?.media?.canonicalUrl === media.canonicalUrl;
+
   const steps = [
-    { label: 'Detectado', done: Boolean(lastSync.media) },
-    { label: 'Correspondência', done: Boolean(lastSync.result?.matched && !lastSync.result?.requiresConfirmation) },
-    { label: 'Sincronizado', done: lastSync.status === 'synced' },
+    { label: 'Detectado', done: true },
+    {
+      label: 'Correspondência',
+      done: Boolean(resolutionMatches && currentResolution?.result?.matched && !currentResolution.result.requiresConfirmation),
+      warn: Boolean(resolutionMatches && currentResolution?.result?.requiresConfirmation),
+    },
+    { label: 'Sincronizado', done: Boolean(syncMatches && lastSync?.status === 'synced') },
   ];
+
   for (const step of steps) {
     const el = document.createElement('span');
-    const warn = lastSync.status === 'confirmation_required' && step.label === 'Correspondência';
-    el.className = 'sync-step' + (step.done ? ' done' : warn ? ' warn' : '');
+    el.className = 'sync-step' + (step.done ? ' done' : step.warn ? ' warn' : '');
     el.textContent = step.label;
     currentFlow.append(el);
   }
-  const time = document.createElement('span');
-  time.className = 'sync-step';
-  time.textContent = formatTime(lastSync.updatedAt);
-  currentFlow.append(time);
+
+  const timestamp = syncMatches ? lastSync?.updatedAt : resolutionMatches ? currentResolution?.resolvedAt : undefined;
+  if (timestamp) {
+    const time = document.createElement('span');
+    time.className = 'sync-step';
+    time.textContent = formatTime(timestamp);
+    currentFlow.append(time);
+  }
 }
 
 function renderCurrentEntry(entry: LibraryEntry | null) {
@@ -304,12 +321,12 @@ function renderCurrentMedia(media: DetectedMedia | null) {
   currentMediaDetailEl.textContent = mediaDetail(media);
 }
 
-async function hydrateCurrentMatch(media: DetectedMedia | null, lastSync?: SyncState | null) {
+async function hydrateCurrentMatch(media: DetectedMedia | null, currentResolution?: CurrentResolution | null) {
   currentMatchEl.hidden = true;
   currentMatchedMedia = null;
-  const result = lastSync?.result;
+  const result = currentResolution?.result;
   if (!media || !result?.matched || result.requiresConfirmation || !result.mediaId) return;
-  if (lastSync?.media?.canonicalUrl && lastSync.media.canonicalUrl !== media.canonicalUrl) return;
+  if (currentResolution?.media?.canonicalUrl !== media.canonicalUrl) return;
 
   const response = await chrome.runtime.sendMessage({ type: 'MEDIA_GET', mediaId: result.mediaId });
   if (!response?.ok || !response.media) return;
@@ -678,13 +695,14 @@ async function refreshSession() {
   renderHistory();
 
   const detected = (response.lastDetected ?? null) as DetectedMedia | null;
+  const currentResolution = (response.currentResolution ?? null) as CurrentResolution | null;
   const lastSync = (response.lastSync ?? null) as SyncState | null;
   const navigation = (response.episodeNavigation ?? null) as EpisodeNavigationState | null;
   const waitingForNewEpisode = renderEpisodeNavigation(navigation, detected);
   if (!waitingForNewEpisode) {
     renderCurrentMedia(detected);
-    renderCurrentFlow(lastSync);
-    await hydrateCurrentMatch(detected, lastSync);
+    renderCurrentFlow(detected, currentResolution, lastSync);
+    await hydrateCurrentMatch(detected, currentResolution);
   }
 
   pending = response.pending ?? [];
