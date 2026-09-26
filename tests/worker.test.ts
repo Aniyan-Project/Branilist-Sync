@@ -274,3 +274,73 @@ it('migrates a trusted episode-level correction to the stable Crunchyroll season
     42,
   );
 });
+
+
+it('accepts Netflix detection and exposes it through AUTH_STATUS', async () => {
+  const netflixSource = {
+    id,
+    url: 'https://www.netflix.com/watch/81600001',
+    frameId: 0,
+    tab: {},
+  };
+  const netflixMedia = {
+    providerId: 'netflix',
+    providerMediaId: '81234567?s=1',
+    providerEpisodeId: '81600001',
+    providerSeriesId: '81234567',
+    providerSeasonNumber: 1,
+    canonicalUrl: 'https://www.netflix.com/watch/81600001',
+    kind: 'ANIME',
+    title: 'Example Anime',
+    episode: 1,
+  };
+
+  const detected = await send({ type: 'TRACKER_DETECTED', payload: netflixMedia }, netflixSource);
+  expect(detected.ok).toBe(true);
+
+  const status = await send({ type: 'AUTH_STATUS' }, popup);
+  expect(status.lastDetected).toMatchObject({
+    providerId: 'netflix',
+    providerMediaId: '81234567?s=1',
+    providerEpisodeId: '81600001',
+  });
+});
+
+it('accepts Netflix SPA navigation and clear events only for Netflix URLs', async () => {
+  const netflixSource = {
+    id,
+    url: 'https://www.netflix.com/watch/81600001',
+    frameId: 0,
+    tab: {},
+  };
+
+  const moved = await send({
+    type: 'EPISODE_NAVIGATED',
+    payload: {
+      providerId: 'netflix',
+      previousEpisodeId: '81600001',
+      episodeProviderId: '81600002',
+      canonicalUrl: 'https://www.netflix.com/watch/81600002',
+      detectedAt: '2026-09-26T18:00:00Z',
+    },
+  }, netflixSource);
+  expect(moved.ok).toBe(true);
+
+  const cleared = await send({
+    type: 'TRACKER_CLEARED',
+    payload: {
+      providerId: 'netflix',
+      canonicalUrl: 'https://www.netflix.com/browse',
+    },
+  }, netflixSource);
+  expect(cleared.ok).toBe(true);
+
+  const forged = await send({
+    type: 'TRACKER_CLEARED',
+    payload: {
+      providerId: 'netflix',
+      canonicalUrl: 'https://www.crunchyroll.com/',
+    },
+  }, netflixSource);
+  expect(forged.ok).toBe(false);
+});
