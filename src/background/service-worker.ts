@@ -5,16 +5,37 @@ import { trustedPopup, validateDetection } from '../core/message-policy';
 import { loadSettings, saveSettings } from '../core/settings';
 import { providerById } from '../core/provider-registry';
 import { crunchyrollLegacyMappingIds } from '../providers/crunchyroll/identity';
-import type { CrunchyrollBridgeDiagnostics, CurrentResolution, DetectedMedia, EpisodeNavigationState, ExtensionMessage, NetflixBridgeDiagnostics, ProviderDiagnostics } from '../core/types';
+import {
+  selectTrackerSession,
+  summarizeTrackerSession,
+  trackerSessionIdentity,
+  type TrackerSessionMap,
+} from './tracker-sessions';
+import type {
+  CrunchyrollBridgeDiagnostics,
+  CurrentResolution,
+  DetectedMedia,
+  EpisodeNavigationState,
+  ExtensionMessage,
+  NetflixBridgeDiagnostics,
+  ProviderDiagnostics,
+  TrackerSessionState,
+} from '../core/types';
 
 const KEY = 'branilist.sync.v4';
-const DETECTED = 'branilist.detected';
-const NAVIGATION = 'branilist.episode-navigation';
-const BRIDGE_DIAG = 'branilist.crunchyroll-bridge-diagnostics';
-const NETFLIX_BRIDGE_DIAG = 'branilist.netflix-bridge-diagnostics';
-const PROVIDER_DIAG = 'branilist.provider-diagnostics';
-const CURRENT_RESOLUTION = 'branilist.current-resolution';
-const ready = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+const SESSIONS = 'branilist.tracker-sessions.v1';
+const LEGACY_SESSION_KEYS = [
+  'branilist.detected',
+  'branilist.episode-navigation',
+  'branilist.crunchyroll-bridge-diagnostics',
+  'branilist.netflix-bridge-diagnostics',
+  'branilist.provider-diagnostics',
+  'branilist.current-resolution',
+];
+const ready = (async () => {
+  await chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+  await chrome.storage.local.remove(LEGACY_SESSION_KEYS);
+})();
 const engine = new SyncEngine({
   load: async () => (await chrome.storage.local.get(KEY))[KEY] as SyncSnapshot | undefined,
   save: async snapshot => { await chrome.storage.local.set({ [KEY]: snapshot }); },
@@ -23,6 +44,58 @@ const engine = new SyncEngine({
 });
 // Account changes and writes must not race. Persisted events belong to this account.
 let queue: Promise<unknown> = ready;
+
+async function loadTrackerSessions(): Promise<TrackerSessionMap> {
+  const stored = (await chrome.storage.local.get(SESSIONS))[SESSIONS];
+  return stored && typeof stored === 'object' && !Array.isArray(stored)
+    ? stored as TrackerSessionMap
+    : {};
+}
+
+async function saveTrackerSessions(sessions: TrackerSessionMap): Promise<void> {
+  await chrome.storage.local.set({ [SESSIONS]: sessions });
+}
+
+async function updateTrackerSession(
+  sender: chrome.runtime.MessageSender,
+  providerId: string,
+  mutate: (session: TrackerSessionState) => TrackerSessionState,
+): Promise<TrackerSessionState> {
+  const identity = trackerSessionIdentity(sender, providerId);
+  const sessions = await loadTrackerSessions();
+  const previous: TrackerSessionState = sessions[identity.key] ?? {
+    ...identity,
+    updatedAt: new Date().toISOString(),
+  };
+  const next = mutate({ ...previous });
+  const normalized: TrackerSessionState = {
+    ...next,
+    ...identity,
+    updatedAt: new Date().toISOString(),
+  };
+  sessions[identity.key] = normalized;
+  await saveTrackerSessions(sessions);
+  return normalized;
+}
+
+function clearSessionCurrentState(session: TrackerSessionState): TrackerSessionState {
+  const next = { ...session };
+  delete next.detected;
+  delete next.currentResolution;
+  delete next.episodeNavigation;
+  return next;
+}
+
+async function removeTrackerSessionsForTab(tabId: number): Promise<void> {
+  const sessions = await loadTrackerSessions();
+  let changed = false;
+  for (const [key, session] of Object.entries(sessions)) {
+    if (session.tabId !== tabId) continue;
+    delete sessions[key];
+    changed = true;
+  }
+  if (changed) await saveTrackerSessions(sessions);
+}
 
 function trustedMappingResult(result: Awaited<ReturnType<typeof resolveMedia>>): boolean {
   return result.matched === true &&
