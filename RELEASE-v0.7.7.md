@@ -1,22 +1,17 @@
 # Branilist Sync v0.7.7
 
-Correção da identidade de correspondência no Crunchyroll.
+Correção da identidade de correspondência do Crunchyroll entre episódios.
 
 ## Problema
-Quando a API do Crunchyroll não retornava season_id, a extensão usava o episodeProviderId como providerMediaId. Isso fazia cada episódio parecer uma obra diferente e exigia corrigir a correspondência novamente em E2, E3 etc.
+Alguns payloads do Crunchyroll não expõem season_id de forma confiável. O fallback anterior podia usar episode_id ou series_id, fazendo a correção manual ser específica demais ou ampla demais.
 
-## Correção
-- providerMediaId agora segue a ordem:
-  1. seasonProviderId;
-  2. seriesProviderId;
-  3. episodeProviderId apenas como último fallback;
-- tanto a detecção pela rede quanto o fallback DOM/JSON-LD usam a mesma regra;
-- validação do worker aceita a identidade estável de série quando season não existe.
-
-## Migração prática
-- correções antigas salvas por episode ID não são promovidas automaticamente;
-- após atualizar para v0.7.7, pode ser necessário corrigir a correspondência uma única vez;
-- essa nova correção será salva pela identidade estável da série e deverá valer para os próximos episódios.
+## Solução
+- identidade estável por temporada baseada em series_id + season_slug_title;
+- todos os episódios da mesma temporada reutilizam a mesma correspondência;
+- temporadas diferentes da mesma série permanecem separadas;
+- fallback seguro quando season_slug_title estiver ausente;
+- migração automática de mappings antigos por season_id ou episode_id;
+- mappings antigos por series_id não são migrados automaticamente para evitar aplicar uma temporada em outra.
 
 ## Compatibilidade
 - versão 0.7.7;
