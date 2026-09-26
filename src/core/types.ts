@@ -45,6 +45,12 @@ export interface DetectedMedia {
   externalIds?: Partial<Record<'ANILIST' | 'MAL', string>>;
 }
 
+export interface CurrentResolution {
+  media: DetectedMedia;
+  result: ResolveResult;
+  resolvedAt: string;
+}
+
 export interface ResolveResult {
   matched: boolean;
   mediaId?: number;
