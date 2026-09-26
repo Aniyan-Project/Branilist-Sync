@@ -24,12 +24,31 @@ export interface EpisodeNavigationState {
 export interface ProviderDiagnostics {
   providerId: string;
   active: boolean;
+  lastProbeAt?: string;
   lastDetectedAt?: string;
   lastCanonicalUrl?: string;
+  lastPathname?: string;
+  hasVideo?: boolean;
+  hasPlayerRoot?: boolean;
+  hasTitleRoot?: boolean;
+  hasWatchId?: boolean;
+  playerTitleText?: string;
   lastEpisodeId?: string;
   lastEpisodeNumber?: number;
   lastProgressPercent?: number;
   lastClearedAt?: string;
+}
+
+export interface ProviderPageDiagnostic {
+  providerId: string;
+  active: boolean;
+  canonicalUrl: string;
+  pathname: string;
+  hasVideo: boolean;
+  hasPlayerRoot: boolean;
+  hasTitleRoot: boolean;
+  hasWatchId: boolean;
+  playerTitleText?: string;
 }
 
 export interface ExtensionSettings {
@@ -208,6 +227,7 @@ export type ExtensionMessage =
   | { type: 'TRACKER_DETECTED'; payload: DetectedMedia }
   | { type: 'EPISODE_NAVIGATED'; payload: EpisodeNavigationState }
   | { type: 'BRIDGE_DIAGNOSTIC'; payload: Partial<CrunchyrollBridgeDiagnostics> }
+  | { type: 'PROVIDER_DIAGNOSTIC'; payload: ProviderPageDiagnostic }
   | { type: 'TRACKER_CLEARED'; payload: { providerId: string; canonicalUrl: string } }
   | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
   | { type: 'AUTH_LOGIN' }
