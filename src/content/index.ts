@@ -6,30 +6,52 @@ let cleanup: (() => void) | null = null;
 let mountedKey = '';
 let remountQueued = false;
 
-function candidatePageUrl(): URL {
-  const live = new URL(location.href);
-  const candidates = [
-    document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href,
-    document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.content,
-  ];
+function livePageUrl(): URL {
+  return new URL(location.href);
+}
 
-  for (const raw of candidates) {
-    if (!raw) continue;
+function metadataFingerprint(): string {
+  const parts: string[] = [];
+
+  const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href?.trim();
+  const ogUrl = document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.content?.trim();
+  if (canonical) parts.push('canonical=' + canonical);
+  if (ogUrl) parts.push('og=' + ogUrl);
+
+  for (const script of document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]')) {
+    const text = script.textContent?.trim();
+    if (!text) continue;
     try {
-      const candidate = new URL(raw, live);
-      if (candidate.origin !== live.origin) continue;
-      if (providerForUrl(candidate)) return candidate;
+      const parsed = JSON.parse(text);
+      const stack = Array.isArray(parsed) ? [...parsed] : [parsed];
+      while (stack.length) {
+        const value = stack.pop();
+        if (!value || typeof value !== 'object') continue;
+        const node = value as Record<string, unknown>;
+        const types = [node['@type']].flat();
+        if (types.includes('TVEpisode') || types.includes('Episode')) {
+          const identity = [node.url, node['@id'], node.episodeNumber]
+            .filter(v => typeof v === 'string' || typeof v === 'number')
+            .join('|');
+          if (identity) parts.push('episode=' + identity);
+        }
+        for (const child of Object.values(node)) {
+          if (child && typeof child === 'object') {
+            if (Array.isArray(child)) stack.push(...child);
+            else stack.push(child);
+          }
+        }
+      }
     } catch {
-      // Ignore transient/stale SPA metadata.
+      // Ignore transient malformed structured data during SPA updates.
     }
   }
-  return live;
+
+  return parts.join('||');
 }
 
 function pageKey(): string {
-  const live = location.href;
-  const effective = candidatePageUrl().href;
-  return live === effective ? live : live + '|' + effective;
+  return livePageUrl().href + '||' + metadataFingerprint();
 }
 
 async function reportDetected(media: DetectedMedia): Promise<void> {
@@ -49,7 +71,7 @@ function mountForCurrentPage(force = false): void {
   cleanup = null;
   mountedKey = key;
 
-  const url = candidatePageUrl();
+  const url = livePageUrl();
   const provider = providerForUrl(url);
   if (!provider) return;
 
@@ -58,7 +80,7 @@ function mountForCurrentPage(force = false): void {
   let detecting = false;
   let detected = false;
   let attempts = 0;
-  const maxAttempts = 40;
+  const maxAttempts = 80;
 
   const stillCurrent = () => !stopped && pageKey() === key;
 
@@ -97,7 +119,7 @@ function mountForCurrentPage(force = false): void {
 
   let timer: number | null = window.setInterval(() => {
     void tryDetect();
-  }, 750);
+  }, 500);
 
   void tryDetect();
 
@@ -117,43 +139,24 @@ function queueRemount(): void {
   }, 0);
 }
 
-const dispatchNavigation = () => window.dispatchEvent(new Event('branilist:navigation'));
-const originalPushState = history.pushState.bind(history);
-const originalReplaceState = history.replaceState.bind(history);
-
-history.pushState = function (...args: Parameters<History['pushState']>) {
-  originalPushState(...args);
-  dispatchNavigation();
-};
-history.replaceState = function (...args: Parameters<History['replaceState']>) {
-  originalReplaceState(...args);
-  dispatchNavigation();
-};
-
-window.addEventListener('popstate', dispatchNavigation);
-window.addEventListener('branilist:navigation', queueRemount);
-
-const metadataObserver = new MutationObserver(queueRemount);
-metadataObserver.observe(document.documentElement, {
+const mutationObserver = new MutationObserver(queueRemount);
+mutationObserver.observe(document.documentElement, {
   subtree: true,
   childList: true,
   attributes: true,
+  characterData: true,
   attributeFilter: ['href', 'content'],
 });
 
 mountForCurrentPage();
 
-const navigationObserver = window.setInterval(mountForCurrentPage, 750);
+const navigationObserver = window.setInterval(mountForCurrentPage, 500);
 
 window.addEventListener(
   'pagehide',
   () => {
     window.clearInterval(navigationObserver);
-    metadataObserver.disconnect();
-    window.removeEventListener('popstate', dispatchNavigation);
-    window.removeEventListener('branilist:navigation', queueRemount);
-    history.pushState = originalPushState;
-    history.replaceState = originalReplaceState;
+    mutationObserver.disconnect();
     cleanup?.();
   },
   { once: true },
