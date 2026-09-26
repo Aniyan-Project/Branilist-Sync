@@ -186,3 +186,20 @@ it('persists Crunchyroll bridge diagnostics for popup troubleshooting', async ()
     lastEpisodeNumber: 3,
   });
 });
+
+
+it('clears the current detection when Crunchyroll SPA leaves a watch page', async () => {
+  await send({ type: 'TRACKER_DETECTED', payload: media });
+  expect(storage['branilist.detected']).toBeTruthy();
+
+  const cleared = await send({
+    type: 'TRACKER_CLEARED',
+    payload: {
+      providerId: 'crunchyroll',
+      canonicalUrl: 'https://www.crunchyroll.com/series/G24H1N334/example',
+    },
+  });
+  expect(cleared.ok).toBe(true);
+  expect(storage['branilist.detected']).toBeUndefined();
+  expect(storage['branilist.episode-navigation']).toBeUndefined();
+});
