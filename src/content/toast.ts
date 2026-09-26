@@ -198,5 +198,5 @@ export function showDetectionToast(media: DetectedMedia, feedback: DetectionFeed
 
   window.setTimeout(() => {
     if (!panel.classList.contains('open')) host.remove();
-  }, 12000);
+  }, 30000);
 }
