@@ -2,41 +2,47 @@
 
 Extensão oficial do **Branilist** para acompanhar automaticamente anime e mangá em serviços suportados.
 
-O Branilist Sync detecta a mídia e o progresso em sites compatíveis e envia eventos normalizados para o Branilist, que decide o matching final e atualiza a lista do usuário com segurança.
+O Branilist Sync detecta a mídia e o progresso em sites compatíveis, pede ao backend para resolver a obra com segurança e só então envia uma atualização idempotente da lista.
 
-## v0.2.0 — Crunchyroll tracking foundation
+## v0.3.0 — Backend integration
 
-A primeira integração real está sendo construída para o Crunchyroll.
-
-Já implementado nesta versão:
+Implementado nesta versão:
 
 - Manifest V3.
-- OAuth 2.0 Authorization Code + PKCE.
-- Service worker como única camada que conhece o access token.
-- Providers isolados para facilitar contribuições da comunidade.
-- Detecção do ID estável de URLs `/watch/<id>`.
-- Parser em camadas para metadados de episódio.
-- JSON-LD como fonte preferencial de série + número do episódio.
-- Progresso do elemento `<video>`.
-- Evento de sync somente após atingir 80% do episódio.
-- Detecção e atualização de progresso são eventos separados.
-- Remount automático em navegação SPA entre episódios.
-- Permissões restritas aos hosts realmente suportados.
-- Testes de parsing e CI com test/typecheck/build.
+- OAuth Public Client `branilist-sync` com Authorization Code + PKCE S256.
+- Refresh token rotativo e retry automático após 401.
+- Revogação de tokens no logout.
+- Tokens restritos ao service worker / contexts confiáveis.
+- `GET /me` para exibir a conta vinculada.
+- `POST /resolve` antes de qualquer escrita.
+- `POST /tracking/events` com `Idempotency-Key`.
+- Matching incerto nunca atualiza a lista.
+- Estado de confirmação/revisão visível no popup.
+- Crunchyroll sincroniza somente a partir de **90%**, igual ao backend.
+- Abrir uma página nunca conta como progresso.
+- Testes de threshold e idempotência.
 
 ### Fail-safe
 
-O provider não deve atualizar a lista se não tiver identificação suficiente da mídia.
-
-Abrir um episódio nunca é considerado progresso assistido. O evento de escrita só acontece quando o tracker cruza o threshold configurado.
+```text
+episódio detectado
+      ↓
+90% assistido
+      ↓
+POST /resolve
+      ↓
+match seguro?
+ ├─ não → confirmação necessária; nenhuma escrita
+ └─ sim → POST /tracking/events
+              ↓
+        atualização monotônica
+```
 
 ## Estado dos providers
 
-- **Crunchyroll:** tracking foundation ativo em desenvolvimento; requer validação com fixtures/páginas reais antes da publicação na Chrome Web Store.
+- **Crunchyroll:** integração ativa para anime, ainda exigindo validação com páginas reais antes da publicação na Chrome Web Store.
 - **Netflix:** scaffold, desativado.
 - **Comikey:** scaffold, desativado.
-
-Um provider só deve ser marcado como estável depois de testes reais e regras seguras de progresso.
 
 ## Desenvolvimento
 
@@ -55,6 +61,8 @@ chrome://extensions
 → Carregar sem compactação
 ```
 
+Para o OAuth funcionar fora de testes, o ID publicado da extensão precisa estar provisionado no backend como callback exato do client `branilist-sync`.
+
 ## Arquitetura
 
 ```text
@@ -67,13 +75,14 @@ Tracker Provider
 Evento normalizado
       ↓
 Service Worker
-      ↓
-Branilist API
-      ↓
-Matching + atualização da lista
+      ├── OAuth/token
+      ├── /resolve
+      └── /tracking/events
+              ↓
+        Branilist backend
 ```
 
-O provider nunca recebe o token Branilist.
+O provider e o content script nunca recebem o token Branilist.
 
 ## Contribuições
 
