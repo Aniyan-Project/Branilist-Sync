@@ -5,12 +5,13 @@ import { trustedPopup, validateDetection } from '../core/message-policy';
 import { loadSettings, saveSettings } from '../core/settings';
 import { providerById } from '../core/provider-registry';
 import { crunchyrollLegacyMappingIds } from '../providers/crunchyroll/identity';
-import type { CrunchyrollBridgeDiagnostics, CurrentResolution, DetectedMedia, EpisodeNavigationState, ExtensionMessage, ProviderDiagnostics } from '../core/types';
+import type { CrunchyrollBridgeDiagnostics, CurrentResolution, DetectedMedia, EpisodeNavigationState, ExtensionMessage, NetflixBridgeDiagnostics, ProviderDiagnostics } from '../core/types';
 
 const KEY = 'branilist.sync.v4';
 const DETECTED = 'branilist.detected';
 const NAVIGATION = 'branilist.episode-navigation';
 const BRIDGE_DIAG = 'branilist.crunchyroll-bridge-diagnostics';
+const NETFLIX_BRIDGE_DIAG = 'branilist.netflix-bridge-diagnostics';
 const PROVIDER_DIAG = 'branilist.provider-diagnostics';
 const CURRENT_RESOLUTION = 'branilist.current-resolution';
 const ready = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
@@ -119,6 +120,38 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       await chrome.storage.local.remove([DETECTED, NAVIGATION, CURRENT_RESOLUTION]);
       return { ok: true };
     }
+    if (message.type === 'NETFLIX_BRIDGE_DIAGNOSTIC') {
+      const senderUrl = sender.url ? new URL(sender.url) : null;
+      if (
+        sender.id !== chrome.runtime.id ||
+        !sender.tab ||
+        sender.frameId !== 0 ||
+        !senderUrl ||
+        !['www.netflix.com', 'netflix.com'].includes(senderUrl.hostname)
+      ) throw new Error('Diagnóstico Netflix inválido.');
+
+      const previous = ((await chrome.storage.local.get(NETFLIX_BRIDGE_DIAG))[NETFLIX_BRIDGE_DIAG] ?? {}) as NetflixBridgeDiagnostics;
+      const payload = message.payload;
+      const next: NetflixBridgeDiagnostics = {
+        ...previous,
+        ...payload,
+        active: true,
+        memberApiHost: typeof payload.memberApiHost === 'string'
+          ? payload.memberApiHost.slice(0, 300)
+          : previous.memberApiHost,
+        movieId: typeof payload.movieId === 'string' && /^\d{4,20}$/.test(payload.movieId)
+          ? payload.movieId
+          : previous.movieId,
+        lastEpisodeId: typeof payload.lastEpisodeId === 'string' && /^\d{4,20}$/.test(payload.lastEpisodeId)
+          ? payload.lastEpisodeId
+          : previous.lastEpisodeId,
+        lastSeriesId: typeof payload.lastSeriesId === 'string' && /^\d{4,20}$/.test(payload.lastSeriesId)
+          ? payload.lastSeriesId
+          : previous.lastSeriesId,
+      };
+      await chrome.storage.local.set({ [NETFLIX_BRIDGE_DIAG]: next });
+      return { ok: true };
+    }
     if (message.type === 'BRIDGE_DIAGNOSTIC') {
       const senderUrl = sender.url ? new URL(sender.url) : null;
       if (!senderUrl || !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname)) throw new Error('Diagnóstico inválido.');
@@ -200,12 +233,12 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (message.type === 'SETTINGS_SET') return { ok: true, settings: await saveSettings(message.payload) };
     if (message.type === 'AUTH_LOGIN') {
       await login();
-      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, PROVIDER_DIAG, CURRENT_RESOLUTION]);
+      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, NETFLIX_BRIDGE_DIAG, PROVIDER_DIAG, CURRENT_RESOLUTION]);
       return { ok: true };
     }
     if (message.type === 'AUTH_LOGOUT') {
       await logout();
-      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, PROVIDER_DIAG, CURRENT_RESOLUTION]);
+      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, NETFLIX_BRIDGE_DIAG, PROVIDER_DIAG, CURRENT_RESOLUTION]);
       return { ok: true };
     }
     if (message.type === 'SYNC_RETRY') return { ok: true, lastSync: await engine.run(undefined, message.retryId) };
@@ -234,6 +267,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         lastDetected: (await chrome.storage.local.get(DETECTED))[DETECTED] as DetectedMedia | undefined,
         episodeNavigation: (await chrome.storage.local.get(NAVIGATION))[NAVIGATION] as EpisodeNavigationState | undefined,
         bridgeDiagnostics: (await chrome.storage.local.get(BRIDGE_DIAG))[BRIDGE_DIAG] as CrunchyrollBridgeDiagnostics | undefined,
+        netflixBridgeDiagnostics: (await chrome.storage.local.get(NETFLIX_BRIDGE_DIAG))[NETFLIX_BRIDGE_DIAG] as NetflixBridgeDiagnostics | undefined,
         providerDiagnostics: (await chrome.storage.local.get(PROVIDER_DIAG))[PROVIDER_DIAG] as ProviderDiagnostics | undefined,
         currentResolution: (await chrome.storage.local.get(CURRENT_RESOLUTION))[CURRENT_RESOLUTION] as CurrentResolution | undefined,
         pending: snapshot.events.filter(event => ['resolved', 'error', 'confirmation_required'].includes(event.state.status)).map(event => event.state),
