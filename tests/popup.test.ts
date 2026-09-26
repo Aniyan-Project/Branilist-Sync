@@ -198,9 +198,8 @@ it('filters the library by media type and increments progress with the quick act
 
 it('shows the safe Branilist match for the current detected page', async () => {
   const state = authState();
-  state.lastSync = {
-    status: 'resolved',
-    updatedAt: '2026-09-26T12:00:00Z',
+  (state as any).currentResolution = {
+    resolvedAt: '2026-09-26T12:00:00Z',
     media: { ...currentMedia, canonicalUrl: 'https://www.crunchyroll.com/watch/GMKUXG2E0/example' },
     result: {
       matched: true,
@@ -211,7 +210,7 @@ it('shows the safe Branilist match for the current detected page', async () => {
       confidence: 1,
       requiresConfirmation: false,
     },
-  } as never;
+  };
   state.lastDetected = { ...currentMedia, canonicalUrl: 'https://www.crunchyroll.com/watch/GMKUXG2E0/example' } as never;
 
   const send = vi.fn(async (message: { type: string }) => {
@@ -242,4 +241,147 @@ it('shows the safe Branilist match for the current detected page', async () => {
   await vi.waitFor(() => expect(document.querySelector('#current-match')?.hasAttribute('hidden')).toBe(false));
   expect(document.querySelector('#current-branilist-title')?.textContent).toBe('Tantei wa Mou, Shindeiru.');
   expect(document.querySelector('#current-branilist-meta')?.textContent).toContain('Correspondência segura');
+});
+
+
+it('renders recent history and persists extension settings', async () => {
+  const state = authState();
+  (state as any).settings = {
+    autoSync: true,
+    showToast: true,
+    toastDurationSeconds: 30,
+    quickPlusStartsCurrent: true,
+  };
+  (state as any).history = [{
+    status: 'synced',
+    updatedAt: '2026-09-26T12:00:00Z',
+    occurredAt: '2026-09-26T11:59:00Z',
+    message: 'Progresso atualizado para 2.',
+    media: { ...currentMedia, canonicalUrl: 'https://www.crunchyroll.com/watch/GMKUXG2E0/example' },
+    result: {
+      matched: true, mediaId: 15, action: 'PROGRESS_UPDATED',
+      previousProgress: 1, newProgress: 2, confidence: 1, requiresConfirmation: false,
+    },
+  }];
+
+  const send = vi.fn(async (message: any) => {
+    if (message.type === 'AUTH_STATUS') return state;
+    if (message.type === 'SETTINGS_SET') return { ok: true, settings: message.payload };
+    return { ok: true };
+  });
+  vi.stubGlobal('chrome', { runtime: { sendMessage: send }, tabs: { create: vi.fn() } });
+
+  await import('../src/ui/popup/popup');
+  await vi.waitFor(() => expect(document.querySelector('#account-summary')?.textContent).toContain('@tester'));
+
+  document.querySelector<HTMLButtonElement>('[data-tab="history"]')!.click();
+  expect(document.querySelector('#history-list')?.textContent).toContain('Sincronizado');
+  expect(document.querySelector('#history-list')?.textContent).toContain('progresso 2');
+
+  document.querySelector<HTMLButtonElement>('[data-tab="settings"]')!.click();
+  const autoSync = document.querySelector<HTMLInputElement>('#setting-auto-sync')!;
+  expect(autoSync.checked).toBe(true);
+  autoSync.checked = false;
+  autoSync.dispatchEvent(new Event('change'));
+
+  await vi.waitFor(() => expect(send).toHaveBeenCalledWith({
+    type: 'SETTINGS_SET',
+    payload: {
+      autoSync: false,
+      showToast: true,
+      toastDurationSeconds: 30,
+      quickPlusStartsCurrent: true,
+    },
+  }));
+  expect(document.querySelector('#settings-feedback')?.textContent).toBe('Configurações salvas.');
+});
+
+
+it('hydrates the new SPA episode match even when lastSync still belongs to the previous episode', async () => {
+  const state = authState();
+  const episode2 = {
+    ...currentMedia,
+    episode: 2,
+    providerEpisodeId: 'GPWUKD78W',
+    canonicalUrl: 'https://www.crunchyroll.com/watch/GPWUKD78W/episode-2',
+  };
+
+  state.lastDetected = episode2 as never;
+  state.lastSync = {
+    status: 'synced',
+    updatedAt: '2026-09-26T12:00:00Z',
+    media: {
+      ...currentMedia,
+      canonicalUrl: 'https://www.crunchyroll.com/watch/GMKUXG2E0/episode-1',
+    },
+    result: {
+      matched: true,
+      mediaId: 15,
+      action: 'PROGRESS_UPDATED',
+      previousProgress: 0,
+      newProgress: 1,
+      confidence: 1,
+      requiresConfirmation: false,
+    },
+  } as never;
+
+  (state as any).currentResolution = {
+    resolvedAt: '2026-09-26T12:05:00Z',
+    media: episode2,
+    result: {
+      matched: true,
+      mediaId: 15,
+      action: 'RESOLVED',
+      previousProgress: 0,
+      newProgress: 0,
+      confidence: 1,
+      requiresConfirmation: false,
+    },
+  };
+
+  const send = vi.fn(async (message: { type: string }) => {
+    if (message.type === 'AUTH_STATUS') return state;
+    if (message.type === 'MEDIA_GET') return {
+      ok: true,
+      media: {
+        id: 15,
+        slug: 'the-detective-is-already-dead',
+        type: 'ANIME',
+        status: 'FINISHED',
+        format: 'TV',
+        title: libraryItem.media.title,
+        coverImage: libraryItem.media.coverImage,
+        episodes: 12,
+        chapters: null,
+        seasonYear: 2021,
+        averageScore: 74,
+        popularity: 100,
+        isAdult: false,
+      },
+    };
+    if (message.type === 'LIBRARY_GET') return { ok: true, items: [structuredClone(libraryItem)] };
+    return { ok: true };
+  });
+
+  vi.stubGlobal('chrome', {
+    runtime: {
+      sendMessage: send,
+      getManifest: () => ({ version: '0.7.6' }),
+    },
+    tabs: { create: vi.fn() },
+  });
+
+  await import('../src/ui/popup/popup');
+  await vi.waitFor(() => expect(document.querySelector('#current-match')?.hasAttribute('hidden')).toBe(false));
+
+  expect(document.querySelector('#current-media-detail')?.textContent).toContain('Episódio 2');
+  expect(document.querySelector('#current-branilist-title')?.textContent).toBe('Tantei wa Mou, Shindeiru.');
+
+  const pills = [...document.querySelectorAll('#current-flow .sync-step')].map(el => ({
+    text: el.textContent,
+    done: el.classList.contains('done'),
+  }));
+  expect(pills.find(item => item.text === 'Detectado')?.done).toBe(true);
+  expect(pills.find(item => item.text === 'Correspondência')?.done).toBe(true);
+  expect(pills.find(item => item.text === 'Sincronizado')?.done).toBe(false);
 });

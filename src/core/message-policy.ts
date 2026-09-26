@@ -1,5 +1,6 @@
 import type { DetectedMedia } from './types';
 import { crunchyrollMediaId } from '../providers/crunchyroll/meta';
+import { crunchyrollSeasonIdentity } from '../providers/crunchyroll/identity';
 
 const providerToken = (value: unknown): string | undefined =>
   typeof value === 'string' && /^[A-Z0-9]{4,32}$/i.test(value) ? value : undefined;
@@ -15,16 +16,21 @@ export function validateDetection(value: unknown, sender: chrome.runtime.Message
   const media = value as DetectedMedia;
   const source = new URL(sender.url ?? '');
   const canonical = new URL(media.canonicalUrl);
-  const episodeId = crunchyrollMediaId(source);
+  const episodeId = crunchyrollMediaId(canonical);
   const declaredEpisodeId = providerToken(media.providerEpisodeId);
   const seasonId = providerToken(media.providerSeasonId);
   const seriesId = providerToken(media.providerSeriesId);
-  const providerMediaId = providerToken(media.providerMediaId);
+  const seasonSlug = typeof media.providerSeasonSlug === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(media.providerSeasonSlug) && media.providerSeasonSlug.length <= 120
+    ? media.providerSeasonSlug.toLowerCase()
+    : undefined;
+  const providerMediaId = typeof media.providerMediaId === 'string' && media.providerMediaId.length <= 200 ? media.providerMediaId : undefined;
+  const expectedProviderMediaId = crunchyrollSeasonIdentity(seriesId, seasonSlug, seasonId, episodeId);
+  const allowedHost = ['www.crunchyroll.com', 'crunchyroll.com'].includes(source.hostname);
 
-  if (!episodeId || crunchyrollMediaId(canonical) !== episodeId || source.origin !== canonical.origin ||
+  if (!allowedHost || !episodeId || source.origin !== canonical.origin ||
     media.providerId !== 'crunchyroll' || media.kind !== 'ANIME' ||
     (declaredEpisodeId && declaredEpisodeId !== episodeId) ||
-    !providerMediaId || providerMediaId !== (seasonId ?? episodeId) ||
+    !providerMediaId || providerMediaId !== expectedProviderMediaId ||
     typeof media.title !== 'string' || !media.title.trim() || media.title.length > 300 ||
     !Number.isSafeInteger(media.episode) || media.episode! <= 0) {
     throw new Error('Mídia inválida para esta página.');
@@ -35,12 +41,13 @@ export function validateDetection(value: unknown, sender: chrome.runtime.Message
     providerMediaId,
     providerEpisodeId: episodeId,
     providerSeasonId: seasonId,
+    providerSeasonSlug: seasonSlug,
     providerSeriesId: seriesId,
     kind: 'ANIME',
     title: media.title.trim(),
     episode: media.episode,
     progressPercent: media.progressPercent,
-    canonicalUrl: `${source.origin}${source.pathname}`,
+    canonicalUrl: `${canonical.origin}${canonical.pathname}`,
     seasonTitle: typeof media.seasonTitle === 'string' ? media.seasonTitle.slice(0, 300) : undefined,
     episodeTitle: typeof media.episodeTitle === 'string' ? media.episodeTitle.slice(0, 300) : undefined,
   };

@@ -1,6 +1,10 @@
 import type {
   BranilistProfile,
+  CrunchyrollBridgeDiagnostics,
+  CurrentResolution,
   DetectedMedia,
+  EpisodeNavigationState,
+  ExtensionSettings,
   LibraryEntry,
   LibraryStatus,
   MediaDetail,
@@ -17,6 +21,7 @@ const authButton = $('#auth') as HTMLButtonElement;
 const openButton = $('#open') as HTMLButtonElement;
 const refreshButton = $('#refresh') as HTMLButtonElement;
 const oauthEl = $('#oauth');
+const bridgeDiagnosticsEl = $('#bridge-diagnostics');
 
 const currentMediaEl = $('#current-media');
 const currentMediaTitleEl = $('#current-media-title');
@@ -27,6 +32,15 @@ const currentCover = $('#current-cover') as HTMLImageElement;
 const currentBranilistTitle = $('#current-branilist-title');
 const currentBranilistMeta = $('#current-branilist-meta');
 const currentOpen = $('#current-open') as HTMLButtonElement;
+const currentOpenFallback = $('#current-open-fallback') as HTMLButtonElement;
+const currentProgress = $('#current-progress');
+const currentList = $('#current-list');
+const currentStatus = $('#current-status') as HTMLSelectElement;
+const currentScore = $('#current-score') as HTMLInputElement;
+const currentPlus = $('#current-plus') as HTMLButtonElement;
+const currentSave = $('#current-save') as HTMLButtonElement;
+const currentFeedback = $('#current-feedback');
+const currentFlow = $('#current-flow');
 
 const pendingContentEl = $('#pending-content');
 const pendingEmptyEl = $('#pending-empty');
@@ -38,6 +52,7 @@ const syncEl = $('#sync');
 const syncTitleEl = $('#sync-title');
 const syncMessageEl = $('#sync-message');
 const syncCandidatesEl = $('#sync-candidates');
+const pendingCandidatesEl = $('#pending-candidates');
 const retryButton = $('#retry') as HTMLButtonElement;
 
 const librarySearch = $('#library-search') as HTMLInputElement;
@@ -61,6 +76,14 @@ const detailRepeat = $('#detail-repeat') as HTMLInputElement;
 const detailSave = $('#detail-save') as HTMLButtonElement;
 const detailFeedback = $('#detail-feedback');
 
+const historyList = $('#history-list');
+const historyEmpty = $('#history-empty');
+const settingAutoSync = $('#setting-auto-sync') as HTMLInputElement;
+const settingShowToast = $('#setting-show-toast') as HTMLInputElement;
+const settingToastDuration = $('#setting-toast-duration') as HTMLInputElement;
+const settingQuickStart = $('#setting-quick-start') as HTMLInputElement;
+const settingsFeedback = $('#settings-feedback');
+
 let authenticated = false;
 let profile: BranilistProfile | null = null;
 let retryId: string | undefined;
@@ -69,6 +92,15 @@ let library: LibraryEntry[] = [];
 let libraryLoaded = false;
 let selectedEntry: LibraryEntry | null = null;
 let currentMatchedMedia: MediaDetail | null = null;
+let currentEntry: LibraryEntry | null = null;
+let episodeNavigation: EpisodeNavigationState | null = null;
+let history: Array<SyncState & { occurredAt?: string }> = [];
+let settings: ExtensionSettings = {
+  autoSync: true,
+  showToast: true,
+  toastDurationSeconds: 30,
+  quickPlusStartsCurrent: true,
+};
 
 const statusLabels: Record<LibraryStatus, string> = {
   PLANNING: 'Planejando',
@@ -136,6 +168,108 @@ function setDetailFeedback(message = '', error = false) {
   detailFeedback.classList.toggle('error', error);
 }
 
+function formatTime(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(profile?.localeCode ?? 'pt-BR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).format(date);
+}
+
+function renderSettings() {
+  settingAutoSync.checked = settings.autoSync;
+  settingShowToast.checked = settings.showToast;
+  settingToastDuration.value = String(settings.toastDurationSeconds);
+  settingQuickStart.checked = settings.quickPlusStartsCurrent;
+  settingToastDuration.disabled = !settings.showToast;
+}
+
+function renderHistory() {
+  historyList.replaceChildren();
+  historyEmpty.hidden = history.length > 0;
+  for (const item of history) {
+    const row = document.createElement('div');
+    row.className = 'history-item';
+    const head = document.createElement('div');
+    head.className = 'history-head';
+    const title = document.createElement('strong');
+    title.textContent = item.media?.title ?? 'Sincronização Branilist';
+    const time = document.createElement('span');
+    time.className = 'history-time';
+    time.textContent = formatTime(item.occurredAt ?? item.updatedAt);
+    head.append(title, time);
+    const status = document.createElement('div');
+    status.className = 'history-status';
+    const label = item.status === 'synced' ? 'Sincronizado'
+      : item.status === 'error' ? 'Erro'
+      : item.status === 'confirmation_required' ? 'Revisão necessária'
+      : item.status === 'ignored' ? 'Ignorado'
+      : item.status === 'resolved' ? 'Correspondência encontrada'
+      : 'Detectado';
+    const progress = item.result?.newProgress ? ' • progresso ' + item.result.newProgress : '';
+    status.textContent = label + progress + (item.message ? ' • ' + item.message : '');
+    row.append(head, status);
+    historyList.append(row);
+  }
+}
+
+function renderCurrentFlow(
+  media: DetectedMedia | null,
+  currentResolution?: CurrentResolution | null,
+  lastSync?: SyncState | null,
+) {
+  currentFlow.replaceChildren();
+  if (!media) return;
+
+  const resolutionMatches = currentResolution?.media?.canonicalUrl === media.canonicalUrl;
+  const syncMatches = lastSync?.media?.canonicalUrl === media.canonicalUrl;
+
+  const steps = [
+    { label: 'Detectado', done: true },
+    {
+      label: 'Correspondência',
+      done: Boolean(resolutionMatches && currentResolution?.result?.matched && !currentResolution.result.requiresConfirmation),
+      warn: Boolean(resolutionMatches && currentResolution?.result?.requiresConfirmation),
+    },
+    { label: 'Sincronizado', done: Boolean(syncMatches && lastSync?.status === 'synced') },
+  ];
+
+  for (const step of steps) {
+    const el = document.createElement('span');
+    el.className = 'sync-step' + (step.done ? ' done' : step.warn ? ' warn' : '');
+    el.textContent = step.label;
+    currentFlow.append(el);
+  }
+
+  const timestamp = syncMatches ? lastSync?.updatedAt : resolutionMatches ? currentResolution?.resolvedAt : undefined;
+  if (timestamp) {
+    const time = document.createElement('span');
+    time.className = 'sync-step';
+    time.textContent = formatTime(timestamp);
+    currentFlow.append(time);
+  }
+}
+
+function renderCurrentEntry(entry: LibraryEntry | null) {
+  currentEntry = entry;
+  currentList.hidden = !entry;
+  const fallback = document.querySelector<HTMLElement>('#current-actions-fallback');
+  if (fallback) fallback.hidden = Boolean(entry);
+  if (!entry) {
+    currentProgress.textContent = 'Ainda não foi possível carregar sua entrada da lista.';
+    return;
+  }
+  const total = totalFor(entry);
+  currentProgress.textContent = total
+    ? entry.progress + ' / ' + total + ' • ' + statusLabels[entry.status]
+    : entry.progress + ' • ' + statusLabels[entry.status];
+  currentStatus.value = entry.status;
+  currentScore.value = entry.score ? String(entry.score) : '';
+  currentPlus.textContent = entry.media.type === 'ANIME' ? '+1 episódio' : '+1 capítulo';
+  currentPlus.disabled = total !== null && entry.progress >= total;
+}
+
 function activateTab(name: string) {
   document.querySelectorAll<HTMLElement>('.tab').forEach(tab => {
     tab.classList.toggle('active', tab.dataset.tab === name);
@@ -146,9 +280,36 @@ function activateTab(name: string) {
   if (name === 'library' && authenticated && !libraryLoaded) void loadLibrary();
 }
 
+function renderEpisodeNavigation(nav: EpisodeNavigationState | null, media: DetectedMedia | null) {
+  episodeNavigation = nav;
+  if (!nav || nav.episodeProviderId === media?.providerEpisodeId) return false;
+
+  currentMatchEl.hidden = true;
+  currentMatchedMedia = null;
+  currentEntry = null;
+  currentList.hidden = true;
+  currentMediaEl.hidden = false;
+  currentEmptyEl.hidden = true;
+  currentMediaTitleEl.textContent = 'Mudança de episódio detectada';
+  currentMediaDetailEl.textContent = `crunchyroll • episódio ${nav.episodeProviderId} • aguardando metadados do novo episódio…`;
+  currentFlow.replaceChildren();
+
+  const detectedStep = document.createElement('span');
+  detectedStep.className = 'sync-step done';
+  detectedStep.textContent = 'Mudança detectada';
+  const waitingStep = document.createElement('span');
+  waitingStep.className = 'sync-step warn';
+  waitingStep.textContent = 'Aguardando metadados';
+  currentFlow.append(detectedStep, waitingStep);
+  return true;
+}
+
 function renderCurrentMedia(media: DetectedMedia | null) {
   currentMatchEl.hidden = true;
   currentMatchedMedia = null;
+  currentEntry = null;
+  currentList.hidden = true;
+  currentFlow.replaceChildren();
   if (!media) {
     currentMediaEl.hidden = true;
     currentEmptyEl.hidden = false;
@@ -160,12 +321,12 @@ function renderCurrentMedia(media: DetectedMedia | null) {
   currentMediaDetailEl.textContent = mediaDetail(media);
 }
 
-async function hydrateCurrentMatch(media: DetectedMedia | null, lastSync?: SyncState | null) {
+async function hydrateCurrentMatch(media: DetectedMedia | null, currentResolution?: CurrentResolution | null) {
   currentMatchEl.hidden = true;
   currentMatchedMedia = null;
-  const result = lastSync?.result;
+  const result = currentResolution?.result;
   if (!media || !result?.matched || result.requiresConfirmation || !result.mediaId) return;
-  if (lastSync?.media?.canonicalUrl && lastSync.media.canonicalUrl !== media.canonicalUrl) return;
+  if (currentResolution?.media?.canonicalUrl !== media.canonicalUrl) return;
 
   const response = await chrome.runtime.sendMessage({ type: 'MEDIA_GET', mediaId: result.mediaId });
   if (!response?.ok || !response.media) return;
@@ -183,6 +344,41 @@ async function hydrateCurrentMatch(media: DetectedMedia | null, lastSync?: SyncS
     total ? `${total} ${detail.type === 'ANIME' ? 'eps.' : 'caps.'}` : null,
   ].filter(Boolean).join(' • ');
   currentMatchEl.hidden = false;
+
+  if (authenticated && !libraryLoaded) await loadLibrary();
+  renderCurrentEntry(library.find(entry => entry.mediaId === detail.id) ?? null);
+}
+
+async function hydratePendingCandidates(state: SyncState | null) {
+  pendingCandidatesEl.replaceChildren();
+  const ids = state?.status === 'confirmation_required' ? state.result?.candidates ?? [] : [];
+  if (!ids.length) return;
+
+  const details = await Promise.all(ids.slice(0, 6).map(async mediaId => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'MEDIA_GET', mediaId });
+      return response?.ok ? response.media as MediaDetail : null;
+    } catch {
+      return null;
+    }
+  }));
+
+  if (retryId !== state?.retryId) return;
+  for (const media of details.filter(Boolean) as MediaDetail[]) {
+    const item = document.createElement('div');
+    item.className = 'candidate';
+    const image = document.createElement('img');
+    image.alt = '';
+    if (media.coverImage) image.src = media.coverImage;
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = titleFor(media.title, profile?.titleLanguage, profile?.localeCode);
+    const meta = document.createElement('small');
+    meta.textContent = [media.format, media.seasonYear, 'Branilist #' + media.id].filter(Boolean).join(' • ');
+    copy.append(title, meta);
+    item.append(image, copy);
+    pendingCandidatesEl.append(item);
+  }
 }
 
 function renderPending(state: SyncState | null) {
@@ -222,9 +418,10 @@ function renderPending(state: SyncState | null) {
   const candidates = state.result?.candidates ?? [];
   syncCandidatesEl.textContent = state.status === 'confirmation_required'
     ? candidates.length
-      ? `Candidatos Branilist: ${candidates.join(', ')}.`
+      ? 'Encontramos ' + candidates.length + ' candidato(s) para revisão.'
       : 'A correspondência precisa de revisão.'
     : '';
+  void hydratePendingCandidates(state);
 }
 
 function renderPendingList(lastSync?: SyncState | null) {
@@ -298,9 +495,14 @@ async function incrementEntry(entry: LibraryEntry, button?: HTMLButtonElement) {
   if (total !== null && next > total) return;
   if (button) button.disabled = true;
   try {
-    const nextStatus: LibraryStatus = entry.status === 'PLANNING' ? 'CURRENT' : entry.status;
+    const nextStatus: LibraryStatus = settings.quickPlusStartsCurrent && entry.status === 'PLANNING' ? 'CURRENT' : entry.status;
     await updateEntry(entry, next, nextStatus);
     renderLibrary();
+    if (currentEntry?.mediaId === entry.mediaId) {
+      renderCurrentEntry(entry);
+      currentFeedback.textContent = 'Progresso atualizado.';
+      currentFeedback.classList.remove('error');
+    }
     if (selectedEntry?.mediaId === entry.mediaId) {
       detailStatus.value = entry.status;
       detailProgress.value = String(entry.progress);
@@ -464,7 +666,8 @@ async function refreshSession() {
       : 'Conta Branilist vinculada'
     : 'Conta não vinculada';
 
-  accountSummary.textContent = label;
+  const extensionVersion = chrome.runtime.getManifest?.().version ?? 'dev';
+  accountSummary.textContent = `${label} • v${extensionVersion}`;
   accountEl.textContent = response.profileError ? `${label} • ${response.profileError}` : label;
   profileButton.textContent = profile?.username?.slice(0, 1).toUpperCase() || 'B';
   authButton.textContent = authenticated ? 'Desvincular conta' : 'Vincular conta';
@@ -473,10 +676,34 @@ async function refreshSession() {
     ? `Client: ${response.oauth.clientId}\nID: ${response.oauth.extensionId}\nCallback: ${response.oauth.redirectUri}`
     : '';
 
+  const bridge = (response.bridgeDiagnostics ?? null) as CrunchyrollBridgeDiagnostics | null;
+  bridgeDiagnosticsEl.textContent = bridge
+    ? [
+        `Bridge: ${bridge.active ? 'ATIVO' : 'inativo'}`,
+        `JSONs observados: ${bridge.jsonResponsesSeen ?? 0}`,
+        bridge.startedAt ? `Iniciado: ${formatTime(bridge.startedAt)}` : null,
+        bridge.lastRequestAt ? `Última resposta: ${formatTime(bridge.lastRequestAt)}` : null,
+        bridge.lastRequestUrl ? `Última URL: ${bridge.lastRequestUrl}` : null,
+        bridge.lastEpisodeId ? `Último episódio extraído: ${bridge.lastEpisodeId}${bridge.lastEpisodeNumber ? ` (E${bridge.lastEpisodeNumber})` : ''}` : 'Último episódio extraído: nenhum',
+        bridge.lastEpisodeAt ? `Extraído em: ${formatTime(bridge.lastEpisodeAt)}` : null,
+      ].filter(Boolean).join('\n')
+    : 'Bridge: sem sinal recebido ainda.';
+
+  settings = response.settings ?? settings;
+  history = response.history ?? [];
+  renderSettings();
+  renderHistory();
+
   const detected = (response.lastDetected ?? null) as DetectedMedia | null;
+  const currentResolution = (response.currentResolution ?? null) as CurrentResolution | null;
   const lastSync = (response.lastSync ?? null) as SyncState | null;
-  renderCurrentMedia(detected);
-  await hydrateCurrentMatch(detected, lastSync);
+  const navigation = (response.episodeNavigation ?? null) as EpisodeNavigationState | null;
+  const waitingForNewEpisode = renderEpisodeNavigation(navigation, detected);
+  if (!waitingForNewEpisode) {
+    renderCurrentMedia(detected);
+    renderCurrentFlow(detected, currentResolution, lastSync);
+    await hydrateCurrentMatch(detected, currentResolution);
+  }
 
   pending = response.pending ?? [];
   renderPendingList(lastSync);
@@ -499,6 +726,27 @@ async function busy(button: HTMLButtonElement, action: () => Promise<void>) {
   finally { button.disabled = false; }
 }
 
+async function persistSettings() {
+  const duration = Number(settingToastDuration.value);
+  const payload: ExtensionSettings = {
+    autoSync: settingAutoSync.checked,
+    showToast: settingShowToast.checked,
+    toastDurationSeconds: Number.isFinite(duration) ? duration : 30,
+    quickPlusStartsCurrent: settingQuickStart.checked,
+  };
+  settingsFeedback.textContent = 'Salvando…';
+  settingsFeedback.classList.remove('error');
+  const response = await chrome.runtime.sendMessage({ type: 'SETTINGS_SET', payload });
+  if (!response?.ok) {
+    settingsFeedback.textContent = response?.error ?? 'Não foi possível salvar as configurações.';
+    settingsFeedback.classList.add('error');
+    return;
+  }
+  settings = response.settings ?? payload;
+  renderSettings();
+  settingsFeedback.textContent = 'Configurações salvas.';
+}
+
 document.querySelectorAll<HTMLButtonElement>('.tab').forEach(button => {
   button.addEventListener('click', () => activateTab(button.dataset.tab ?? 'current'));
 });
@@ -508,10 +756,51 @@ librarySearch.addEventListener('input', renderLibrary);
 libraryStatus.addEventListener('change', renderLibrary);
 libraryType.addEventListener('change', renderLibrary);
 librarySort.addEventListener('change', renderLibrary);
+for (const control of [settingAutoSync, settingShowToast, settingToastDuration, settingQuickStart]) {
+  control.addEventListener('change', () => void persistSettings());
+}
 
 currentOpen.addEventListener('click', () => {
   if (currentMatchedMedia) void chrome.tabs.create({ url: mediaUrl(currentMatchedMedia) });
 });
+currentOpenFallback.addEventListener('click', () => {
+  if (currentMatchedMedia) void chrome.tabs.create({ url: mediaUrl(currentMatchedMedia) });
+});
+currentPlus.addEventListener('click', () => {
+  if (!currentEntry) return;
+  void incrementEntry(currentEntry, currentPlus).catch(error => {
+    currentFeedback.textContent = error instanceof Error ? error.message : 'Falha ao atualizar progresso.';
+    currentFeedback.classList.add('error');
+  });
+});
+currentSave.addEventListener('click', () => void busy(currentSave, async () => {
+  if (!currentEntry) return;
+  const scoreText = currentScore.value.trim();
+  const score = scoreText ? Number(scoreText) : null;
+  if (score !== null && (score < 0.5 || score > 10 || (score * 2) % 1 !== 0)) {
+    currentFeedback.textContent = 'A nota deve ficar entre 0.5 e 10 em passos de 0.5.';
+    currentFeedback.classList.add('error');
+    return;
+  }
+  const response = await chrome.runtime.sendMessage({
+    type: 'LIBRARY_UPDATE',
+    mediaId: currentEntry.mediaId,
+    payload: {
+      status: currentStatus.value as LibraryStatus,
+      progress: currentEntry.progress,
+      score,
+      repeatCount: currentEntry.repeatCount,
+    },
+  });
+  if (!response?.ok) throw new Error(response?.error ?? 'Não foi possível atualizar a lista.');
+  currentEntry.status = currentStatus.value as LibraryStatus;
+  currentEntry.score = score;
+  currentEntry.updatedAt = new Date().toISOString();
+  renderCurrentEntry(currentEntry);
+  renderLibrary();
+  currentFeedback.textContent = 'Lista atualizada.';
+  currentFeedback.classList.remove('error');
+}));
 
 pendingSelect.addEventListener('change', () => {
   const state = pending.find(item => item.retryId === pendingSelect.value);

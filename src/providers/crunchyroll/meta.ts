@@ -179,14 +179,9 @@ function seriesIdFromExactTitleLink(document: Document, seriesTitle: string): st
 export function parseCrunchyrollMetadata(url: URL, document: Document): CrunchyrollMetadata | null {
   const episodeProviderId = crunchyrollMediaId(url);
   if (!episodeProviderId) return null;
-  const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href;
-  const ogUrl = document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.content;
-  for (const identity of [canonical, ogUrl]) {
-    if (identity) {
-      try { if (crunchyrollMediaId(new URL(identity, url)) !== episodeProviderId) return null; } catch { return null; }
-    }
-  }
-
+  // Crunchyroll keeps canonical/og:url stale across SPA episode navigation.
+  // The live /watch/{episodeId} URL is authoritative; structured episode data
+  // below must still bind to that exact episode ID before we accept it.
   const structured = parseCrunchyrollJsonLd(document, url);
   if (!structured) return null;
   const embedded = parseCrunchyrollEmbeddedIdentity(document, episodeProviderId);
@@ -202,6 +197,6 @@ export function parseCrunchyrollMetadata(url: URL, document: Document): Crunchyr
     episodeProviderId,
     seasonProviderId,
     seriesProviderId,
-    providerMediaId: seasonProviderId ?? episodeProviderId,
+    providerMediaId: seasonProviderId ?? seriesProviderId ?? episodeProviderId,
   };
 }

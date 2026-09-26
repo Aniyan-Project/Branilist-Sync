@@ -107,3 +107,170 @@ it('keeps public media detail access behind the trusted popup message boundary',
   expect(detail.ok).toBe(true);
   expect(detail.media.id).toBe(42);
 });
+
+
+it('allows content to read settings but only trusted popup can change them', async () => {
+  const defaults = await send({ type: 'SETTINGS_GET' });
+  expect(defaults.ok).toBe(true);
+  expect(defaults.settings).toMatchObject({
+    autoSync: true,
+    showToast: true,
+    toastDurationSeconds: 30,
+    quickPlusStartsCurrent: true,
+  });
+
+  const forged = await send({
+    type: 'SETTINGS_SET',
+    payload: { autoSync: false, showToast: false, toastDurationSeconds: 10, quickPlusStartsCurrent: false },
+  });
+  expect(forged.ok).toBe(false);
+
+  const saved = await send({
+    type: 'SETTINGS_SET',
+    payload: { autoSync: false, showToast: true, toastDurationSeconds: 45, quickPlusStartsCurrent: false },
+  }, popup);
+  expect(saved.ok).toBe(true);
+  expect(saved.settings).toEqual({
+    autoSync: false,
+    showToast: true,
+    toastDurationSeconds: 45,
+    quickPlusStartsCurrent: false,
+  });
+});
+
+it('skips automatic tracking when auto sync is disabled', async () => {
+  await send({
+    type: 'SETTINGS_SET',
+    payload: { autoSync: false, showToast: true, toastDurationSeconds: 30, quickPlusStartsCurrent: true },
+  }, popup);
+
+  const result = await send({ type: 'SYNC_PROGRESS', payload: media });
+  expect(result).toMatchObject({ ok: true, skipped: true, reason: 'auto_sync_disabled' });
+  expect(mocks.write).not.toHaveBeenCalled();
+});
+
+it('returns recent durable sync history to the popup', async () => {
+  await send({ type: 'SYNC_PROGRESS', payload: media });
+  const status = await send({ type: 'AUTH_STATUS' }, popup);
+  expect(status.ok).toBe(true);
+  expect(status.history).toHaveLength(1);
+  expect(status.history[0]).toMatchObject({
+    status: 'synced',
+    media: expect.objectContaining({ title: 'Example' }),
+  });
+  expect(status.history[0].occurredAt).toBeTruthy();
+});
+
+
+it('persists Crunchyroll bridge diagnostics for popup troubleshooting', async () => {
+  const diagnostic = await send({
+    type: 'BRIDGE_DIAGNOSTIC',
+    payload: {
+      active: true,
+      startedAt: '2026-09-26T16:00:00Z',
+      jsonResponsesSeen: 7,
+      lastRequestUrl: 'https://www.crunchyroll.com/content/v2/cms/objects/G8WUN0X72',
+      lastRequestAt: '2026-09-26T16:00:05Z',
+      lastEpisodeId: 'G8WUN0X72',
+      lastEpisodeNumber: 3,
+      lastEpisodeAt: '2026-09-26T16:00:05Z',
+    },
+  });
+  expect(diagnostic.ok).toBe(true);
+
+  const status = await send({ type: 'AUTH_STATUS' }, popup);
+  expect(status.bridgeDiagnostics).toMatchObject({
+    active: true,
+    jsonResponsesSeen: 7,
+    lastEpisodeId: 'G8WUN0X72',
+    lastEpisodeNumber: 3,
+  });
+});
+
+
+it('clears the current detection when Crunchyroll SPA leaves a watch page', async () => {
+  await send({ type: 'TRACKER_DETECTED', payload: media });
+  expect(storage['branilist.detected']).toBeTruthy();
+
+  const cleared = await send({
+    type: 'TRACKER_CLEARED',
+    payload: {
+      providerId: 'crunchyroll',
+      canonicalUrl: 'https://www.crunchyroll.com/series/G24H1N334/example',
+    },
+  });
+  expect(cleared.ok).toBe(true);
+  expect(storage['branilist.detected']).toBeUndefined();
+  expect(storage['branilist.episode-navigation']).toBeUndefined();
+});
+
+
+it('persists the latest current resolution separately from progress sync state', async () => {
+  const detected = await send({ type: 'TRACKER_DETECTED', payload: media });
+  expect(detected.ok).toBe(true);
+
+  const status = await send({ type: 'AUTH_STATUS' }, popup);
+  expect(status.currentResolution).toMatchObject({
+    media: expect.objectContaining({
+      providerId: 'crunchyroll',
+      episode: 3,
+    }),
+    result: expect.objectContaining({
+      matched: true,
+      mediaId: 42,
+    }),
+  });
+  expect(status.currentResolution.resolvedAt).toBeTruthy();
+});
+
+it('clears the current resolution when leaving a watch page', async () => {
+  await send({ type: 'TRACKER_DETECTED', payload: media });
+  expect(storage['branilist.current-resolution']).toBeTruthy();
+
+  const cleared = await send({
+    type: 'TRACKER_CLEARED',
+    payload: {
+      providerId: 'crunchyroll',
+      canonicalUrl: 'https://www.crunchyroll.com/series/G24H1N334/example',
+    },
+  });
+  expect(cleared.ok).toBe(true);
+  expect(storage['branilist.current-resolution']).toBeUndefined();
+});
+
+
+it('migrates a trusted episode-level correction to the stable Crunchyroll season identity', async () => {
+  const stableMedia = {
+    ...media,
+    providerMediaId: 'SERIES123|season-one-portuguese-dub',
+    providerEpisodeId: 'G123',
+    providerSeriesId: 'SERIES123',
+    providerSeasonSlug: 'season-one-portuguese-dub',
+  };
+
+  mocks.resolve
+    .mockResolvedValueOnce({
+      matched: false,
+      requiresConfirmation: true,
+      confidence: 0,
+      action: 'REQUIRES_CONFIRMATION',
+      previousProgress: 0,
+      newProgress: 0,
+    })
+    .mockResolvedValueOnce(safe);
+
+  const detected = await send({ type: 'TRACKER_DETECTED', payload: stableMedia });
+  expect(detected.ok).toBe(true);
+  expect(detected.result).toEqual(safe);
+
+  expect(mocks.resolve).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    providerMediaId: 'SERIES123|season-one-portuguese-dub',
+  }));
+  expect(mocks.resolve).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    providerMediaId: 'G123',
+  }));
+  expect(mocks.saveMapping).toHaveBeenCalledWith(
+    expect.objectContaining({ providerMediaId: 'SERIES123|season-one-portuguese-dub' }),
+    42,
+  );
+});

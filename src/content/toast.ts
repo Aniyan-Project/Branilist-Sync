@@ -1,4 +1,4 @@
-import type { CatalogSearchItem, CatalogSearchResponse, DetectedMedia, ResolveResult } from '../core/types';
+import type { CatalogSearchItem, CatalogSearchResponse, DetectedMedia, ExtensionSettings, ResolveResult } from '../core/types';
 
 const SEARCH_BASE = 'https://branilist.com/api/v1/search';
 
@@ -21,6 +21,7 @@ export interface DetectionFeedback {
   authenticated?: boolean;
   result?: ResolveResult;
   resolveError?: boolean;
+  settings?: ExtensionSettings;
 }
 
 export function showDetectionToast(media: DetectedMedia, feedback: DetectionFeedback): void {
@@ -198,5 +199,50 @@ export function showDetectionToast(media: DetectedMedia, feedback: DetectionFeed
 
   window.setTimeout(() => {
     if (!panel.classList.contains('open')) host.remove();
-  }, 30000);
+  }, Math.max(5, Math.min(120, feedback.settings?.toastDurationSeconds ?? 30)) * 1000);
+}
+
+
+export function showEpisodeChangeToast(
+  previousEpisodeId: string | undefined,
+  episodeProviderId: string,
+  durationSeconds = 12,
+): void {
+  document.querySelector('#branilist-sync-episode-change-host')?.remove();
+
+  const host = document.createElement('div');
+  host.id = 'branilist-sync-episode-change-host';
+  host.style.position = 'fixed';
+  host.style.top = '18px';
+  host.style.right = '18px';
+  host.style.zIndex = '2147483647';
+  document.documentElement.append(host);
+
+  const root = host.attachShadow({ mode: 'closed' });
+  const wrap = document.createElement('div');
+  wrap.style.cssText = [
+    'width:340px',
+    'font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+    'background:#111827',
+    'color:#e5eefb',
+    'border:1px solid #31517a',
+    'border-radius:14px',
+    'box-shadow:0 18px 44px rgba(0,0,0,.45)',
+    'padding:14px 15px',
+  ].join(';');
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:14px;font-weight:800;line-height:1.3';
+  title.textContent = 'Mudança de episódio detectada';
+
+  const detail = document.createElement('div');
+  detail.style.cssText = 'margin-top:6px;font-size:11px;line-height:1.45;color:#9fb1c8';
+  detail.textContent = previousEpisodeId
+    ? `${previousEpisodeId} → ${episodeProviderId}. Aguardando os metadados do novo episódio…`
+    : `Novo episódio ${episodeProviderId} detectado. Aguardando os metadados…`;
+
+  wrap.append(title, detail);
+  root.append(wrap);
+
+  window.setTimeout(() => host.remove(), Math.max(5, Math.min(120, durationSeconds)) * 1000);
 }

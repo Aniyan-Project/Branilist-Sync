@@ -2,11 +2,38 @@ export type MediaKind = 'ANIME' | 'MANGA';
 export type MediaTitleLanguage = 'AUTO' | 'PORTUGUESE' | 'ENGLISH' | 'ROMAJI' | 'NATIVE';
 export type LibraryStatus = 'PLANNING' | 'CURRENT' | 'COMPLETED' | 'PAUSED' | 'DROPPED';
 
+export interface CrunchyrollBridgeDiagnostics {
+  active: boolean;
+  startedAt?: string;
+  jsonResponsesSeen: number;
+  lastRequestUrl?: string;
+  lastRequestAt?: string;
+  lastEpisodeId?: string;
+  lastEpisodeNumber?: number;
+  lastEpisodeAt?: string;
+}
+
+export interface EpisodeNavigationState {
+  providerId: string;
+  previousEpisodeId?: string;
+  episodeProviderId: string;
+  canonicalUrl: string;
+  detectedAt: string;
+}
+
+export interface ExtensionSettings {
+  autoSync: boolean;
+  showToast: boolean;
+  toastDurationSeconds: number;
+  quickPlusStartsCurrent: boolean;
+}
+
 export interface DetectedMedia {
   providerId: string;
   providerMediaId?: string;
   providerEpisodeId?: string;
   providerSeasonId?: string;
+  providerSeasonSlug?: string;
   providerSeriesId?: string;
   kind: MediaKind;
   title: string;
@@ -17,6 +44,12 @@ export interface DetectedMedia {
   progressPercent?: number;
   canonicalUrl: string;
   externalIds?: Partial<Record<'ANILIST' | 'MAL', string>>;
+}
+
+export interface CurrentResolution {
+  media: DetectedMedia;
+  result: ResolveResult;
+  resolvedAt: string;
 }
 
 export interface ResolveResult {
@@ -162,10 +195,15 @@ export interface TrackerProvider {
 export type ExtensionMessage =
   | { type: 'SYNC_RETRY'; retryId: string }
   | { type: 'TRACKER_DETECTED'; payload: DetectedMedia }
+  | { type: 'EPISODE_NAVIGATED'; payload: EpisodeNavigationState }
+  | { type: 'BRIDGE_DIAGNOSTIC'; payload: Partial<CrunchyrollBridgeDiagnostics> }
+  | { type: 'TRACKER_CLEARED'; payload: { providerId: 'crunchyroll'; canonicalUrl: string } }
   | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
   | { type: 'AUTH_STATUS' }
+  | { type: 'SETTINGS_GET' }
+  | { type: 'SETTINGS_SET'; payload: ExtensionSettings }
   | { type: 'LIBRARY_GET' }
   | { type: 'LIBRARY_UPDATE'; mediaId: number; payload: LibraryUpdate }
   | { type: 'MEDIA_GET'; mediaId: number }

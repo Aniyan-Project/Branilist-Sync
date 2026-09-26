@@ -17,7 +17,7 @@
     .brand strong { display:block; font-size:15px; letter-spacing:-.01em; }
     .brand small { display:block; margin-top:2px; color:#7488a4; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .avatar { width:32px; height:32px; border-radius:50%; border:1px solid #2b3b52; background:#182537; color:#b8c7da; font-weight:800; }
-    .tabs { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:8px 10px; border-bottom:1px solid #1b283a; background:#0d1521; }
+    .tabs { display:grid; grid-template-columns:repeat(5,1fr); gap:4px; padding:8px 10px; border-bottom:1px solid #1b283a; background:#0d1521; }
     .tab { border:0; background:transparent; color:#7588a3; border-radius:9px; padding:8px 5px; font-size:11px; font-weight:750; transition:120ms ease; }
     .tab:hover { color:#b9cce4; background:#121d2c; }
     .tab.active { color:#e5efff; background:#17253a; box-shadow:inset 0 0 0 1px #263d5b; }
@@ -33,6 +33,25 @@
     .current-match { display:grid; grid-template-columns:58px minmax(0,1fr); gap:11px; margin-top:11px; padding-top:11px; border-top:1px solid #213149; }
     .current-cover { width:58px; height:82px; border-radius:8px; object-fit:cover; background:#172235; }
     .current-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; }
+    .current-list { margin-top:10px; padding-top:10px; border-top:1px solid #213149; display:grid; gap:8px; }
+    .current-list-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .current-progress { font-size:11px; color:#9cb0ca; font-weight:750; }
+    .sync-flow { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+    .sync-step { padding:4px 7px; border-radius:999px; font-size:9px; font-weight:800; background:#182538; color:#7286a2; border:1px solid #24364f; }
+    .sync-step.done { background:#17352a; color:#99dfb7; border-color:#28533f; }
+    .sync-step.warn { background:#332b18; color:#dfc17f; border-color:#584825; }
+    .history-list { display:grid; gap:8px; }
+    .history-item { border:1px solid #1f2e43; background:#101a29; border-radius:12px; padding:10px; }
+    .history-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .history-head strong { font-size:11px; }
+    .history-time { color:#6f84a2; font-size:9px; white-space:nowrap; }
+    .history-status { margin-top:5px; font-size:10px; color:#8fa4bf; }
+    .settings-list { display:grid; gap:9px; margin-top:10px; }
+    .setting { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:10px 11px; border:1px solid #203047; border-radius:12px; background:#101a29; }
+    .setting strong { display:block; font-size:11px; }
+    .setting small { display:block; margin-top:3px; color:#7185a0; font-size:9px; line-height:1.4; }
+    .toggle { width:18px; height:18px; accent-color:#4d95de; }
+    .setting-number { width:72px; min-height:32px; }
     .toolbar { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:7px; margin-bottom:7px; }
     .toolbar.secondary { grid-template-columns:1fr 1fr; margin-bottom:11px; }
     .input,.select { width:100%; min-height:36px; border:1px solid #25364d; border-radius:9px; background:#0d1623; color:#eaf3ff; padding:0 10px; outline:none; }
@@ -72,6 +91,11 @@
     .feedback { min-height:17px; color:#8dd8ad; font-size:11px; margin-top:8px; }
     .feedback.error { color:#ff9d9d; }
     .pending-card { margin-top:9px; }
+    .candidate-list { display:grid; gap:7px; margin-top:9px; }
+    .candidate { display:grid; grid-template-columns:38px minmax(0,1fr); gap:8px; align-items:center; padding:7px; border:1px solid #34415a; border-radius:9px; background:#171f30; }
+    .candidate img { width:38px; height:54px; object-fit:cover; border-radius:6px; background:#0d1522; }
+    .candidate strong { display:block; color:#e8f1ff; font-size:11px; line-height:1.25; }
+    .candidate small { display:block; margin-top:3px; color:#8296b2; font-size:9px; }
     details { margin-top:10px; color:#7185a0; font-size:10px; }
     #oauth { overflow-wrap:anywhere; white-space:pre-line; }
     [hidden] { display:none !important; }
@@ -87,8 +111,9 @@
 
   <nav class="tabs" aria-label="Navegação">
     <button class="tab active" data-tab="current" type="button">Atual</button>
-    <button class="tab" data-tab="library" type="button">Minha Lista</button>
+    <button class="tab" data-tab="library" type="button">Lista</button>
     <button class="tab" data-tab="pending" type="button">Pendências</button>
+    <button class="tab" data-tab="history" type="button">Histórico</button>
     <button class="tab" data-tab="settings" type="button">Config.</button>
   </nav>
 
@@ -104,11 +129,31 @@
           <div>
             <div id="current-branilist-title" class="media-title"></div>
             <div id="current-branilist-meta" class="muted"></div>
-            <div class="current-actions">
-              <button id="current-open" class="btn" type="button">Abrir no Branilist</button>
+            <div id="current-progress" class="current-progress"></div>
+            <div id="current-list" class="current-list" hidden>
+              <div class="current-list-row">
+                <select id="current-status" class="select">
+                  <option value="CURRENT">Assistindo/Lendo</option>
+                  <option value="PLANNING">Planejando</option>
+                  <option value="COMPLETED">Completo</option>
+                  <option value="PAUSED">Pausado</option>
+                  <option value="DROPPED">Abandonado</option>
+                </select>
+                <input id="current-score" class="input" type="number" min="0.5" max="10" step="0.5" placeholder="Nota">
+              </div>
+              <div class="current-actions">
+                <button id="current-plus" class="btn primary" type="button">+1 episódio</button>
+                <button id="current-save" class="btn" type="button">Salvar</button>
+                <button id="current-open" class="btn" type="button">Abrir no Branilist</button>
+              </div>
+              <div id="current-feedback" class="feedback"></div>
+            </div>
+            <div id="current-actions-fallback" class="current-actions">
+              <button id="current-open-fallback" class="btn" type="button">Abrir no Branilist</button>
             </div>
           </div>
         </div>
+        <div id="current-flow" class="sync-flow"></div>
       </div>
       <div id="current-empty" class="empty">Abra um episódio ou capítulo em um site compatível para acompanhar automaticamente.</div>
     </section>
@@ -185,9 +230,16 @@
           <strong id="sync-title"></strong>
           <div id="sync-message"></div>
           <div id="sync-candidates" class="muted"></div>
+          <div id="pending-candidates" class="candidate-list"></div>
         </div>
         <button id="retry" class="btn primary" type="button" hidden>Tentar novamente</button>
       </div>
+    </section>
+
+    <section class="view" data-view="history">
+      <h2 class="section-title">Sincronizações recentes</h2>
+      <div id="history-list" class="history-list"></div>
+      <div id="history-empty" class="empty">Nenhuma sincronização registrada ainda.</div>
     </section>
 
     <section class="view" data-view="settings">
@@ -198,6 +250,26 @@
         <button id="open" class="btn primary" type="button">Abrir Branilist</button>
       </div>
       <button id="refresh" class="btn" type="button">Atualizar estado</button>
+      <div class="settings-list">
+        <label class="setting">
+          <span><strong>Sincronização automática</strong><small>Atualiza o progresso automaticamente quando o limite do player é atingido.</small></span>
+          <input id="setting-auto-sync" class="toggle" type="checkbox">
+        </label>
+        <label class="setting">
+          <span><strong>Mostrar toast de detecção</strong><small>Exibe o aviso no site quando uma mídia é detectada.</small></span>
+          <input id="setting-show-toast" class="toggle" type="checkbox">
+        </label>
+        <label class="setting">
+          <span><strong>Duração do toast</strong><small>Tempo em segundos antes de fechar automaticamente.</small></span>
+          <input id="setting-toast-duration" class="input setting-number" type="number" min="5" max="120" step="5">
+        </label>
+        <label class="setting">
+          <span><strong>+1 inicia a obra</strong><small>Ao usar +1 em Planejando, muda automaticamente para Assistindo/Lendo.</small></span>
+          <input id="setting-quick-start" class="toggle" type="checkbox">
+        </label>
+      </div>
+      <div id="settings-feedback" class="feedback"></div>
+      <details open><summary>Diagnóstico Crunchyroll</summary><p id="bridge-diagnostics"></p></details>
       <details><summary>Diagnóstico de conexão</summary><p id="oauth"></p></details>
     </section>
   </main>

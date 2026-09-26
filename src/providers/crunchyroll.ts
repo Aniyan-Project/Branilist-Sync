@@ -38,9 +38,9 @@ export const crunchyrollProvider: TrackerProvider = {
     const stopProgress = observeVideoProgress(ctx.document, {
       thresholdPercent: ANIME_COMPLETION_PERCENT,
       async onThreshold(progressPercent) {
-        if (stopped || ctx.document.location.href !== ctx.url.href) return false;
+        if (stopped) return false;
         const current = await thisProvider.detect(ctx);
-        if (stopped || ctx.document.location.href !== ctx.url.href || !current?.episode) return false;
+        if (stopped || !current?.episode) return false;
         emit({ ...current, progressPercent });
         return true;
       },
