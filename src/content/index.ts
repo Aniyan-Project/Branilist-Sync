@@ -1,5 +1,6 @@
 import { providerForHost, providerForUrl } from '../core/provider-registry';
 import { crunchyrollMediaId } from '../providers/crunchyroll/meta';
+import { netflixPlayerProbe, netflixWatchIdFromDocument } from '../providers/netflix/meta';
 import type { CrunchyrollBridgeDiagnostics, DetectedMedia } from '../core/types';
 import type { CrunchyrollNetworkEpisode } from '../providers/crunchyroll/network';
 import { crunchyrollSeasonIdentity } from '../providers/crunchyroll/identity';
@@ -64,9 +65,51 @@ function metadataFingerprint(): string {
   return parts.join('||');
 }
 
+function activeProviderForPage(url = livePageUrl()) {
+  const direct = providerForUrl(url);
+  if (direct) return direct;
+
+  const hostProvider = providerForHost(url);
+  if (hostProvider?.id === 'netflix' && netflixPlayerProbe(document).active) return hostProvider;
+
+  return undefined;
+}
+
 function pageKey(providerId?: string): string {
   const url = livePageUrl();
-  return `${providerId ?? providerForUrl(url)?.id ?? 'none'}||${url.href}||${metadataFingerprint()}`;
+  return `${providerId ?? activeProviderForPage(url)?.id ?? 'none'}||${url.href}||${metadataFingerprint()}`;
+}
+
+let lastProviderDiagnosticKey = '';
+
+async function reportProviderDiagnostic(providerId: string, active: boolean): Promise<void> {
+  const url = livePageUrl();
+  const netflixProbe = providerId === 'netflix' ? netflixPlayerProbe(document) : null;
+  const watchId = providerId === 'netflix'
+    ? netflixWatchIdFromDocument(url, document)
+    : providerId === 'crunchyroll'
+      ? crunchyrollMediaId(url)
+      : null;
+
+  const payload = {
+    providerId,
+    active,
+    canonicalUrl: `${url.origin}${url.pathname}`,
+    pathname: url.pathname,
+    hasVideo: netflixProbe?.hasVideo ?? Boolean(document.querySelector('video')),
+    hasPlayerRoot: netflixProbe?.hasPlayerRoot ?? false,
+    hasTitleRoot: netflixProbe?.hasTitleRoot ?? false,
+    hasWatchId: Boolean(watchId),
+    playerTitleText: netflixProbe?.playerTitleText,
+  };
+  const key = JSON.stringify(payload);
+  if (key === lastProviderDiagnosticKey) return;
+  lastProviderDiagnosticKey = key;
+
+  await chrome.runtime.sendMessage({
+    type: 'PROVIDER_DIAGNOSTIC',
+    payload,
+  }).catch(() => undefined);
 }
 
 async function reportDetected(media: DetectedMedia): Promise<void> {
@@ -212,7 +255,7 @@ window.addEventListener('branilist-sync:crunchyroll-network-episode', event => {
 
 function mountForCurrentPage(force = false): void {
   const url = livePageUrl();
-  const provider = providerForUrl(url);
+  const provider = activeProviderForPage(url);
   if (!provider) return;
 
   lastClearedPage = undefined;
@@ -233,7 +276,7 @@ function mountForCurrentPage(force = false): void {
 
   const stillCurrent = () =>
     !stopped &&
-    providerForUrl(livePageUrl())?.id === provider.id &&
+    activeProviderForPage(livePageUrl())?.id === provider.id &&
     pageKey(provider.id) === key;
 
   const stopProgress = provider.observe?.(ctx, (media) => {
@@ -322,15 +365,17 @@ async function detectCrunchyrollEpisodeNavigation(): Promise<void> {
 
 async function reconcileCurrentPage(): Promise<void> {
   const url = livePageUrl();
-  const provider = providerForUrl(url);
+  const hostProvider = providerForHost(url);
+  const provider = activeProviderForPage(url);
 
   if (!provider) {
-    const hostProvider = providerForHost(url);
+    if (hostProvider) await reportProviderDiagnostic(hostProvider.id, false);
     await clearTrackerForCurrentPage(mountedProviderId ?? hostProvider?.id);
     return;
   }
 
   lastClearedPage = undefined;
+  await reportProviderDiagnostic(provider.id, true);
   if (provider.id === 'crunchyroll') await detectCrunchyrollEpisodeNavigation();
   mountForCurrentPage();
 }
