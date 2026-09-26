@@ -37,8 +37,30 @@ describe('representative Crunchyroll HTML', () => {
   it('never guesses from generic site metadata or episode cards', () => {
     expect(parseCrunchyrollMetadata(url, fixture('unsafe-fallback'))).toBeNull();
   });
-  it('blocks stale SPA metadata until canonical URL catches up', () => {
+  it('blocks stale SPA episode data when structured metadata still belongs to the old episode', () => {
     expect(parseCrunchyrollMetadata(new URL('https://www.crunchyroll.com/watch/G456/next'), fixture('localized'))).toBeNull();
+  });
+
+  it('accepts current episode structured data even if canonical is still stale', () => {
+    const doc = fixture('localized');
+    const canonical = doc.querySelector<HTMLLinkElement>('link[rel="canonical"]')!;
+    canonical.href = 'https://www.crunchyroll.com/watch/GOLD/old';
+
+    const script = doc.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]')[1];
+    script.textContent = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'TVEpisode',
+      url: 'https://www.crunchyroll.com/watch/G456/next',
+      name: 'Novo episódio',
+      episodeNumber: 'Episódio 4',
+      partOfSeries: { '@type': 'TVSeries', name: 'Série de exemplo' },
+    });
+
+    expect(parseCrunchyrollMetadata(new URL('https://www.crunchyroll.com/watch/G456/next'), doc)).toMatchObject({
+      episodeProviderId: 'G456',
+      episode: 4,
+      seriesTitle: 'Série de exemplo',
+    });
   });
   it.each(['0', '-1', '12.5', 'Special', 'Episode 3 - title'])('blocks unsafe episode number %s', episode => {
     const doc = fixture('localized');
