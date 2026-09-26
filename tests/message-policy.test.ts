@@ -24,7 +24,26 @@ it.each([
   { id, url: 'https://evil.test/watch/G123', frameId: 0, tab: {} },
   { id, url, frameId: 1, tab: {} }, { id, url, frameId: 0 },
   { id: 'other', url, frameId: 0, tab: {} },
-  { id, url: 'https://www.crunchyroll.com/watch/G456', frameId: 0, tab: {} },
 ])('rejects forged or unrelated sender %o', sender => {
   expect(() => validateDetection(media, sender as chrome.runtime.MessageSender)).toThrow();
+});
+
+
+it('accepts a live SPA canonical episode even when sender.url is still the previous watch page', () => {
+  const live = {
+    ...media,
+    providerMediaId: 'SEASON123',
+    providerEpisodeId: 'G456',
+    providerSeasonId: 'SEASON123',
+    canonicalUrl: 'https://www.crunchyroll.com/watch/G456',
+  };
+  expect(validateDetection(live, {
+    id,
+    url: 'https://www.crunchyroll.com/watch/G123',
+    frameId: 0,
+    tab: {} as chrome.tabs.Tab,
+  })).toMatchObject({
+    providerEpisodeId: 'G456',
+    canonicalUrl: 'https://www.crunchyroll.com/watch/G456',
+  });
 });
