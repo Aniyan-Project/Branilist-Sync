@@ -1,4 +1,8 @@
 import { extractNetflixNetworkEpisode } from '../providers/netflix/network';
+import {
+  classifyNetflixGenres,
+  extractNetflixGenreIdsFromTitleHtml,
+} from '../providers/netflix/genres';
 
 const EPISODE_EVENT = 'branilist-sync:netflix-network-episode';
 const DIAG_EVENT = 'branilist-sync:netflix-network-diagnostic';
@@ -7,6 +11,8 @@ let lastMovieId = '';
 let lastEndpoint = '';
 let lastEpisodeId = '';
 let timer: number | undefined;
+const genreCache = new Map<string, { isAnime: boolean; genreIds: number[] }>();
+const genreRetryAt = new Map<string, number>();
 
 function emitDiagnostic(payload: Record<string, unknown>) {
   window.dispatchEvent(new CustomEvent(DIAG_EVENT, {
@@ -43,6 +49,66 @@ function memberApiBase(): string | null {
   if (!hostname || (!hostname.endsWith('.netflix.com') && hostname !== 'netflix.com')) return null;
   if (!path.startsWith('/') || path.includes('..')) return null;
   return `https://${hostname}${path.replace(/\/$/, '')}`;
+}
+
+async function confirmAnime(seriesId: string): Promise<{ isAnime: boolean; genreIds: number[] } | null> {
+  const cached = genreCache.get(seriesId);
+  if (cached) return cached;
+
+  const now = Date.now();
+  const retryAt = genreRetryAt.get(seriesId) ?? 0;
+  if (retryAt > now) return null;
+
+  genreRetryAt.set(seriesId, now + 15_000);
+
+  try {
+    const response = await fetch(`https://www.netflix.com/title/${encodeURIComponent(seriesId)}`, {
+      method: 'GET',
+      credentials: 'include',
+      redirect: 'follow',
+      headers: { accept: 'text/html,application/xhtml+xml' },
+    });
+
+    const finalUrl = new URL(response.url || `https://www.netflix.com/title/${seriesId}`);
+    if (!response.ok || !['www.netflix.com', 'netflix.com'].includes(finalUrl.hostname)) {
+      emitDiagnostic({
+        genreStatus: response.status,
+        genreCheckedAt: new Date().toISOString(),
+        animeConfirmed: false,
+      });
+      return null;
+    }
+
+    const html = await response.text();
+    const genreIds = extractNetflixGenreIdsFromTitleHtml(html);
+    if (!genreIds.length) {
+      emitDiagnostic({
+        genreStatus: 'genres_not_found',
+        genreCheckedAt: new Date().toISOString(),
+        animeConfirmed: false,
+      });
+      return null;
+    }
+
+    const classification = classifyNetflixGenres(genreIds);
+    genreCache.set(seriesId, classification);
+
+    emitDiagnostic({
+      genreStatus: response.status,
+      genreCheckedAt: new Date().toISOString(),
+      genreIds,
+      animeConfirmed: classification.isAnime,
+    });
+
+    return classification;
+  } catch {
+    emitDiagnostic({
+      genreStatus: 'fetch_error',
+      genreCheckedAt: new Date().toISOString(),
+      animeConfirmed: false,
+    });
+    return null;
+  }
 }
 
 async function probe() {
@@ -90,6 +156,10 @@ async function probe() {
     });
 
     if (!episode) return;
+
+    const classification = await confirmAnime(episode.seriesProviderId);
+    if (!classification?.isAnime) return;
+
     lastEpisodeId = episode.episodeProviderId;
     window.dispatchEvent(new CustomEvent(EPISODE_EVENT, {
       detail: JSON.stringify(episode),
