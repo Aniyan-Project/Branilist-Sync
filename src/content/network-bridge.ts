@@ -1,41 +1,67 @@
 import { extractCrunchyrollNetworkEpisodes } from '../providers/crunchyroll/network';
+import { extractNetflixNetworkEpisodes } from '../providers/netflix/network';
 
-const EPISODE_EVENT = 'branilist-sync:crunchyroll-network-episode';
-const DIAG_EVENT = 'branilist-sync:crunchyroll-network-diagnostic';
+type ProviderId = 'crunchyroll' | 'netflix';
+
+const host = location.hostname.toLowerCase();
+const provider: ProviderId | null =
+  ['www.crunchyroll.com', 'crunchyroll.com'].includes(host)
+    ? 'crunchyroll'
+    : ['www.netflix.com', 'netflix.com'].includes(host)
+      ? 'netflix'
+      : null;
 
 let jsonResponsesSeen = 0;
 
+function eventName(kind: 'episode' | 'diagnostic') {
+  return provider ? `branilist-sync:${provider}-network-${kind}` : '';
+}
+
 function emitDiagnostic(payload: Record<string, unknown>) {
-  window.dispatchEvent(new CustomEvent(DIAG_EVENT, {
+  if (!provider) return;
+  window.dispatchEvent(new CustomEvent(eventName('diagnostic'), {
     detail: JSON.stringify({
       active: true,
+      providerId: provider,
       jsonResponsesSeen,
       ...payload,
     }),
   }));
 }
 
-function emitFrom(url: string, payload: unknown) {
+function emitEpisodes(url: string, payload: unknown) {
+  if (!provider) return;
   jsonResponsesSeen += 1;
   const now = new Date().toISOString();
+
   emitDiagnostic({
     lastRequestUrl: url.slice(0, 1000),
     lastRequestAt: now,
   });
 
-  for (const episode of extractCrunchyrollNetworkEpisodes(payload)) {
+  const episodes = provider === 'crunchyroll'
+    ? extractCrunchyrollNetworkEpisodes(payload)
+    : extractNetflixNetworkEpisodes(payload);
+
+  for (const episode of episodes) {
+    const episodeId = provider === 'crunchyroll'
+      ? episode.episodeProviderId
+      : episode.watchId;
+    const episodeNumber = episode.episode;
+
     emitDiagnostic({
-      lastEpisodeId: episode.episodeProviderId,
-      lastEpisodeNumber: episode.episode,
+      lastEpisodeId: episodeId,
+      lastEpisodeNumber: episodeNumber,
       lastEpisodeAt: now,
     });
-    window.dispatchEvent(new CustomEvent(EPISODE_EVENT, {
+
+    window.dispatchEvent(new CustomEvent(eventName('episode'), {
       detail: JSON.stringify(episode),
     }));
   }
 }
 
-emitDiagnostic({ startedAt: new Date().toISOString() });
+if (provider) emitDiagnostic({ startedAt: new Date().toISOString() });
 
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (...args: Parameters<typeof fetch>) => {
@@ -44,8 +70,8 @@ window.fetch = async (...args: Parameters<typeof fetch>) => {
     const input = args[0];
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-    if (contentType.includes('json')) {
-      void response.clone().json().then(data => emitFrom(url, data)).catch(() => undefined);
+    if (provider && contentType.includes('json')) {
+      void response.clone().json().then(data => emitEpisodes(url, data)).catch(() => undefined);
     }
   } catch {
     // Never interfere with the site's own fetch response.
@@ -63,20 +89,24 @@ XMLHttpRequest.prototype.open = function (
 ) {
   requestUrls.set(this, String(url));
   this.addEventListener('load', () => {
+    if (!provider) return;
     const requestUrl = requestUrls.get(this);
     if (!requestUrl) return;
+
     try {
       if (this.responseType === 'json' && this.response) {
-        emitFrom(requestUrl, this.response);
+        emitEpisodes(requestUrl, this.response);
         return;
       }
+
       if ((this.responseType === '' || this.responseType === 'text') && this.responseText) {
         const contentType = this.getResponseHeader('content-type')?.toLowerCase() ?? '';
-        if (contentType.includes('json')) emitFrom(requestUrl, JSON.parse(this.responseText));
+        if (contentType.includes('json')) emitEpisodes(requestUrl, JSON.parse(this.responseText));
       }
     } catch {
       // Observing metadata must never break the player request.
     }
   }, { once: true });
+
   return originalOpen.call(this, method, url, ...(rest as [boolean]));
 };
