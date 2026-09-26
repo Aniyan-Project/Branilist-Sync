@@ -5,7 +5,6 @@ import {
   netflixProviderMediaIdentity,
   netflixWatchId,
   netflixWatchIdFromDocument,
-  parseNetflixMetadata,
 } from './netflix/meta';
 import type { NetflixNetworkEpisode } from './netflix/network';
 
@@ -52,25 +51,10 @@ export const netflixProvider: TrackerProvider = {
   },
 
   async detect({ url, document }) {
-    const network = fromNetwork(url, document);
-    if (network) return network;
-
-    const metadata = parseNetflixMetadata(url, document);
-    if (!metadata) return null;
-
-    return {
-      providerId: this.id,
-      providerMediaId: metadata.providerMediaId,
-      providerEpisodeId: metadata.episodeProviderId,
-      providerSeasonId: metadata.providerSeasonId,
-      providerSeriesId: metadata.providerSeriesId,
-      kind: 'ANIME',
-      title: metadata.seriesTitle,
-      episode: metadata.episode,
-      episodeTitle: metadata.episodeTitle,
-      seasonTitle: metadata.seasonTitle,
-      canonicalUrl: `${url.origin}${url.pathname}`,
-    };
+    // Detection is intentionally structured-metadata-only. The MAIN-world
+    // bridge emits episodes only after Netflix genre classification confirms anime.
+    // Visual DOM metadata remains diagnostic/fallback tooling, never sync authority.
+    return fromNetwork(url, document);
   },
 
   observe(ctx, emit) {
