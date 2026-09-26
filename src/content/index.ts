@@ -8,6 +8,7 @@ let cleanup: (() => void) | null = null;
 let mountedKey = '';
 let remountQueued = false;
 let currentEpisodeId = crunchyrollMediaId(new URL(location.href)) ?? undefined;
+let lastClearedUrl: string | undefined;
 const networkEpisodeCache = new Map<string, CrunchyrollNetworkEpisode>();
 
 function livePageUrl(): URL {
@@ -65,6 +66,23 @@ async function reportDetected(media: DetectedMedia): Promise<void> {
 
 async function reportProgress(media: DetectedMedia): Promise<void> {
   await chrome.runtime.sendMessage({ type: 'SYNC_PROGRESS', payload: media });
+}
+
+
+async function clearTrackerForCurrentPage(): Promise<void> {
+  const url = livePageUrl();
+  const canonicalUrl = `${url.origin}${url.pathname}`;
+  if (lastClearedUrl === canonicalUrl) return;
+  lastClearedUrl = canonicalUrl;
+  currentEpisodeId = undefined;
+  cleanup?.();
+  cleanup = null;
+  mountedKey = '';
+
+  await chrome.runtime.sendMessage({
+    type: 'TRACKER_CLEARED',
+    payload: { providerId: 'crunchyroll', canonicalUrl },
+  }).catch(() => undefined);
 }
 
 
@@ -174,6 +192,9 @@ window.addEventListener('branilist-sync:crunchyroll-network-episode', event => {
 });
 
 function mountForCurrentPage(force = false): void {
+  const url = livePageUrl();
+  if (!crunchyrollMediaId(url)) return;
+
   const key = pageKey();
   if (!force && key === mountedKey) return;
 
@@ -181,7 +202,6 @@ function mountForCurrentPage(force = false): void {
   cleanup = null;
   mountedKey = key;
 
-  const url = livePageUrl();
   const provider = providerForUrl(url);
   if (!provider) return;
 
@@ -243,7 +263,14 @@ function mountForCurrentPage(force = false): void {
 async function detectEpisodeNavigation(): Promise<void> {
   const url = livePageUrl();
   const nextEpisodeId = crunchyrollMediaId(url) ?? undefined;
-  if (!nextEpisodeId || nextEpisodeId === currentEpisodeId) return;
+
+  if (!nextEpisodeId) {
+    await clearTrackerForCurrentPage();
+    return;
+  }
+
+  lastClearedUrl = undefined;
+  if (nextEpisodeId === currentEpisodeId) return;
 
   const previousEpisodeId = currentEpisodeId;
   currentEpisodeId = nextEpisodeId;
@@ -293,7 +320,8 @@ mutationObserver.observe(document.documentElement, {
   attributeFilter: ['href', 'content'],
 });
 
-mountForCurrentPage();
+if (crunchyrollMediaId(livePageUrl())) mountForCurrentPage();
+else void clearTrackerForCurrentPage();
 
 const navigationObserver = window.setInterval(() => {
   void detectEpisodeNavigation();
