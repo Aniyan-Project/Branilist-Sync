@@ -143,6 +143,16 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         : typeof payload.genreStatus === 'string'
           ? payload.genreStatus.slice(0, 80)
           : previous.genreStatus;
+      const safeGenreLabels = Array.isArray(payload.genreLabels)
+        ? payload.genreLabels
+            .filter(value => typeof value === 'string')
+            .map(value => value.trim().slice(0, 200))
+            .filter(Boolean)
+            .slice(0, 50)
+        : previous.genreLabels;
+      const safeGenreSource = payload.genreSource === 'ids' || payload.genreSource === 'labels' || payload.genreSource === 'none'
+        ? payload.genreSource
+        : previous.genreSource;
       const next: NetflixBridgeDiagnostics = {
         ...previous,
         ...payload,
@@ -161,6 +171,8 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           : previous.lastSeriesId,
         genreStatus: safeGenreStatus,
         genreIds: safeGenreIds,
+        genreLabels: safeGenreLabels,
+        genreSource: safeGenreSource,
         animeConfirmed: typeof payload.animeConfirmed === 'boolean'
           ? payload.animeConfirmed
           : previous.animeConfirmed,
