@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ resolve: vi.fn(), write: vi.fn(), logout: vi.fn() }));
+const mocks = vi.hoisted(() => ({ resolve: vi.fn(), write: vi.fn(), saveMapping: vi.fn(), logout: vi.fn() }));
 vi.mock('../src/core/auth', () => ({ authStatus: async () => ({ authenticated: true }), login: vi.fn(), logout: mocks.logout }));
-vi.mock('../src/core/api', () => ({ resolveMedia: mocks.resolve, syncProgress: mocks.write, getMe: vi.fn() }));
+vi.mock('../src/core/api', () => ({ resolveMedia: mocks.resolve, syncProgress: mocks.write, saveUserMapping: mocks.saveMapping, getMe: vi.fn() }));
 const id = 'a'.repeat(32);
 const url = 'https://www.crunchyroll.com/watch/G123';
 const source = { id, url, frameId: 0, tab: {} };
@@ -13,7 +13,7 @@ let storage: Record<string, unknown>;
 const send = (message: unknown, sender = source as unknown) => new Promise<any>(resolve => listener(message, sender, resolve));
 beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks(); storage = {};
-  mocks.resolve.mockResolvedValue(safe); mocks.write.mockResolvedValue({ ...safe, action: 'PROGRESS_UPDATED' });
+  mocks.resolve.mockResolvedValue(safe); mocks.write.mockResolvedValue({ ...safe, action: 'PROGRESS_UPDATED' }); mocks.saveMapping.mockResolvedValue(undefined);
   vi.stubGlobal('chrome', {
     runtime: { id, getURL: (path: string) => `chrome-extension://${id}/${path}`, onMessage: { addListener: (fn: typeof listener) => { listener = fn; } } },
     identity: { getRedirectURL: () => `https://${id}.chromiumapp.org/oauth2` },
@@ -47,4 +47,16 @@ it('does not overlap logout with writes and clears persisted events', async () =
   expect(mocks.logout).toHaveBeenCalledTimes(1);
   expect(storage['branilist.sync.v4']).toBeUndefined();
   expect(storage['branilist.detected']).toBeUndefined();
+});
+
+it('resolves detections and saves a user correction without exposing credentials', async () => {
+  const detected = await send({ type: 'TRACKER_DETECTED', payload: media });
+  expect(detected.ok).toBe(true);
+  expect(detected.result).toEqual(safe);
+  expect(mocks.resolve).toHaveBeenCalledTimes(1);
+
+  const corrected = await send({ type: 'SAVE_USER_MAPPING', payload: { media, mediaId: 42 } });
+  expect(corrected.ok).toBe(true);
+  expect(mocks.saveMapping).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'crunchyroll' }), 42);
+  expect(mocks.resolve).toHaveBeenCalledTimes(2);
 });
