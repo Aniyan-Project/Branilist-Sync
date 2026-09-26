@@ -93,9 +93,12 @@ function pageKey(providerId?: string): string {
 }
 
 function detectionKey(media: DetectedMedia): string {
+  if (media.providerEpisodeId) {
+    return `${media.providerId}|episode:${media.providerEpisodeId}`;
+  }
+
   return [
     media.providerId,
-    media.providerEpisodeId ?? '',
     media.providerMediaId ?? '',
     media.episode ?? '',
     media.chapter ?? '',
