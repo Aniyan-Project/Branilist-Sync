@@ -124,3 +124,41 @@ it('clears the active Netflix tracker when leaving the player', async () => {
     },
   });
 });
+
+
+it('keeps Netflix active on a non-watch route while real player evidence is present', async () => {
+  vi.stubGlobal('location', new URL('https://www.netflix.com/browse'));
+  document.body.innerHTML = `
+    <div data-uia="watch-video">
+      <video></video>
+      <div data-uia="video-title">
+        <h4>Mushoku Tensei: Jobless Reincarnation</h4>
+        <span>T1:E1</span>
+      </div>
+    </div>
+  `;
+  mocks.detect.mockResolvedValue(null);
+
+  await import('../src/content/index');
+  await Promise.resolve();
+  await vi.advanceTimersByTimeAsync(300);
+  await Promise.resolve();
+
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'PROVIDER_DIAGNOSTIC',
+    payload: expect.objectContaining({
+      providerId: 'netflix',
+      active: true,
+      canonicalUrl: 'https://www.netflix.com/browse',
+      pathname: '/browse',
+      hasVideo: true,
+      hasPlayerRoot: true,
+      hasTitleRoot: true,
+      hasWatchId: false,
+    }),
+  });
+  expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'TRACKER_CLEARED' }),
+  );
+  expect(mocks.detect).toHaveBeenCalled();
+});
