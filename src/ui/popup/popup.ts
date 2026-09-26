@@ -9,6 +9,7 @@ import type {
   LibraryStatus,
   MediaDetail,
   MediaTitleLanguage,
+  NetflixBridgeDiagnostics,
   ProviderDiagnostics,
   SyncState,
 } from '../../core/types';
@@ -705,6 +706,26 @@ async function refreshSession() {
         providerDiagnostics.lastClearedAt ? `Saiu do player em: ${formatTime(providerDiagnostics.lastClearedAt)}` : null,
       ]
     : ['Provider: sem detecção recebida ainda.'];
+
+  const netflixBridge = (response.netflixBridgeDiagnostics ?? null) as NetflixBridgeDiagnostics | null;
+  if (netflixBridge && (!providerDiagnostics || providerDiagnostics.providerId === 'netflix')) {
+    diagnosticLines.push(
+      '',
+      `Bridge Netflix: ${netflixBridge.active ? 'ATIVO' : 'inativo'}`,
+      typeof netflixBridge.hasReactContext === 'boolean' ? `reactContext: ${netflixBridge.hasReactContext ? 'SIM' : 'não'}` : null,
+      typeof netflixBridge.hasMemberApi === 'boolean' ? `Member API: ${netflixBridge.hasMemberApi ? 'SIM' : 'não'}` : null,
+      netflixBridge.memberApiHost ? `Member API host: ${netflixBridge.memberApiHost}` : null,
+      netflixBridge.movieId ? `Movie ID: ${netflixBridge.movieId}` : null,
+      netflixBridge.lastMetadataStatus !== undefined ? `Metadata status: ${netflixBridge.lastMetadataStatus}` : null,
+      typeof netflixBridge.metadataMatched === 'boolean' ? `Metadata encontrada: ${netflixBridge.metadataMatched ? 'SIM' : 'não'}` : null,
+      netflixBridge.lastSeriesId ? `Série ID: ${netflixBridge.lastSeriesId}` : null,
+      netflixBridge.lastSeasonNumber ? `Temporada: ${netflixBridge.lastSeasonNumber}` : null,
+      netflixBridge.lastEpisodeId
+        ? `Episódio extraído: ${netflixBridge.lastEpisodeId}${netflixBridge.lastEpisodeNumber ? ` (E${netflixBridge.lastEpisodeNumber})` : ''}`
+        : null,
+      netflixBridge.lastMetadataAt ? `Metadata em: ${formatTime(netflixBridge.lastMetadataAt)}` : null,
+    );
+  }
 
   if (bridge && (!providerDiagnostics || providerDiagnostics.providerId === 'crunchyroll')) {
     diagnosticLines.push(
