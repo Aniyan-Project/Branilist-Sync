@@ -1,4 +1,5 @@
 import { extractCrunchyrollNetworkEpisodes } from '../providers/crunchyroll/network';
+import { netflixTitleLooksAnime } from '../providers/netflix/eligibility';
 import { extractNetflixNetworkEpisodes } from '../providers/netflix/network';
 
 type ProviderId = 'crunchyroll' | 'netflix';
@@ -11,6 +12,8 @@ const provider: ProviderId | null =
       ? 'netflix'
       : null;
 
+const nativeFetch = window.fetch.bind(window);
+const netflixEligibility = new Map<string, Promise<boolean>>();
 let jsonResponsesSeen = 0;
 
 function eventName(kind: 'episode' | 'diagnostic') {
@@ -29,7 +32,25 @@ function emitDiagnostic(payload: Record<string, unknown>) {
   }));
 }
 
-function emitEpisodes(url: string, payload: unknown) {
+function netflixIsAnime(titleId: string): Promise<boolean> {
+  const existing = netflixEligibility.get(titleId);
+  if (existing) return existing;
+
+  const check = nativeFetch(`https://www.netflix.com/title/${encodeURIComponent(titleId)}`, {
+    method: 'GET',
+    credentials: 'include',
+    redirect: 'follow',
+  }).then(async response => {
+    if (!response.ok) return false;
+    const html = await response.text();
+    return netflixTitleLooksAnime(html);
+  }).catch(() => false);
+
+  netflixEligibility.set(titleId, check);
+  return check;
+}
+
+async function emitEpisodes(url: string, payload: unknown) {
   if (!provider) return;
   jsonResponsesSeen += 1;
   const now = new Date().toISOString();
@@ -39,19 +60,31 @@ function emitEpisodes(url: string, payload: unknown) {
     lastRequestAt: now,
   });
 
-  const episodes = provider === 'crunchyroll'
-    ? extractCrunchyrollNetworkEpisodes(payload)
-    : extractNetflixNetworkEpisodes(payload);
+  if (provider === 'crunchyroll') {
+    for (const episode of extractCrunchyrollNetworkEpisodes(payload)) {
+      emitDiagnostic({
+        lastEpisodeId: episode.episodeProviderId,
+        lastEpisodeNumber: episode.episode,
+        lastEpisodeAt: now,
+      });
+      window.dispatchEvent(new CustomEvent(eventName('episode'), {
+        detail: JSON.stringify(episode),
+      }));
+    }
+    return;
+  }
 
-  for (const episode of episodes) {
-    const episodeId = provider === 'crunchyroll'
-      ? episode.episodeProviderId
-      : episode.watchId;
-    const episodeNumber = episode.episode;
+  for (const episode of extractNetflixNetworkEpisodes(payload)) {
+    const anime = await netflixIsAnime(episode.titleId);
+    emitDiagnostic({
+      lastAnimeEligible: anime,
+      lastAnimeTitleId: episode.titleId,
+    });
+    if (!anime) continue;
 
     emitDiagnostic({
-      lastEpisodeId: episodeId,
-      lastEpisodeNumber: episodeNumber,
+      lastEpisodeId: episode.watchId,
+      lastEpisodeNumber: episode.episode,
       lastEpisodeAt: now,
     });
 
@@ -63,9 +96,8 @@ function emitEpisodes(url: string, payload: unknown) {
 
 if (provider) emitDiagnostic({ startedAt: new Date().toISOString() });
 
-const originalFetch = window.fetch.bind(window);
 window.fetch = async (...args: Parameters<typeof fetch>) => {
-  const response = await originalFetch(...args);
+  const response = await nativeFetch(...args);
   try {
     const input = args[0];
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -95,13 +127,13 @@ XMLHttpRequest.prototype.open = function (
 
     try {
       if (this.responseType === 'json' && this.response) {
-        emitEpisodes(requestUrl, this.response);
+        void emitEpisodes(requestUrl, this.response);
         return;
       }
 
       if ((this.responseType === '' || this.responseType === 'text') && this.responseText) {
         const contentType = this.getResponseHeader('content-type')?.toLowerCase() ?? '';
-        if (contentType.includes('json')) emitEpisodes(requestUrl, JSON.parse(this.responseText));
+        if (contentType.includes('json')) void emitEpisodes(requestUrl, JSON.parse(this.responseText));
       }
     } catch {
       // Observing metadata must never break the player request.
