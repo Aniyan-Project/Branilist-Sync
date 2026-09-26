@@ -7,7 +7,7 @@ const fixture = (name: string) => new DOMParser().parseFromString(readFileSync(`
 describe('representative Crunchyroll HTML', () => {
   it('ignores malformed JSON and site/recommendation titles', () => {
     expect(parseCrunchyrollMetadata(url, fixture('localized'))).toMatchObject({
-      providerMediaId: 'G123',
+      providerMediaId: 'G24H1N334',
       episodeProviderId: 'G123',
       seriesProviderId: 'G24H1N334',
       seriesTitle: 'Série de exemplo',
