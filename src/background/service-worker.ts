@@ -1,8 +1,9 @@
 import { authStatus, login, logout } from '../core/auth';
 import { syncProgress } from '../core/api';
-import type { ExtensionMessage } from '../core/types';
+import type { DetectedMedia, ExtensionMessage } from '../core/types';
 
 const lastEvent = new Map<string, number>();
+let lastDetected: DetectedMedia | null = null;
 
 function dedupeKey(payload: { providerId: string; canonicalUrl: string; episode?: number; chapter?: number }) {
   return `${payload.providerId}:${payload.canonicalUrl}:${payload.episode ?? ''}:${payload.chapter ?? ''}`;
@@ -24,11 +25,22 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
       }
 
       if (message.type === 'AUTH_STATUS') {
-        sendResponse({ ok: true, ...(await authStatus()) });
+        sendResponse({ ok: true, ...(await authStatus()), lastDetected });
         return;
       }
 
-      if (message.type === 'TRACKER_DETECTED' || message.type === 'SYNC_PROGRESS') {
+      if (message.type === 'TRACKER_DETECTED') {
+        lastDetected = message.payload;
+        sendResponse({ ok: true });
+        return;
+      }
+
+      if (message.type === 'SYNC_PROGRESS') {
+        if ((message.payload.progressPercent ?? 0) < 80) {
+          sendResponse({ ok: true, ignored: true });
+          return;
+        }
+
         const key = dedupeKey(message.payload);
         const previous = lastEvent.get(key) ?? 0;
         if (Date.now() - previous < 15_000) {
@@ -37,6 +49,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
         }
 
         lastEvent.set(key, Date.now());
+        lastDetected = message.payload;
         await syncProgress(message.payload);
         sendResponse({ ok: true });
       }
