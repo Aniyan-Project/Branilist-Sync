@@ -184,3 +184,30 @@ it('does not remount Netflix when only volatile player title DOM changes', async
   expect(mocks.detect).toHaveBeenCalledTimes(1);
   expect(mocks.toast).toHaveBeenCalledTimes(1);
 });
+
+
+it('clears stale Netflix detection immediately when the watch id changes', async () => {
+  mocks.detect.mockResolvedValue(first);
+
+  await import('../src/content/index');
+  await Promise.resolve();
+
+  (location as unknown as URL).href = 'https://www.netflix.com/watch/82682360?trackId=264188152';
+
+  window.dispatchEvent(new CustomEvent('branilist-sync:netflix-watch-changed', {
+    detail: JSON.stringify({
+      watchId: '82682360',
+      canonicalUrl: 'https://www.netflix.com/watch/82682360',
+    }),
+  }));
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'NETFLIX_WATCH_CHANGED',
+    payload: {
+      watchId: '82682360',
+      canonicalUrl: 'https://www.netflix.com/watch/82682360',
+    },
+  });
+});
