@@ -63,6 +63,32 @@ export interface ProviderDiagnostics {
   lastClearedAt?: string;
 }
 
+export interface TrackerSessionState {
+  key: string;
+  tabId: number;
+  frameId: number;
+  providerId: string;
+  updatedAt: string;
+  detected?: DetectedMedia;
+  episodeNavigation?: EpisodeNavigationState;
+  bridgeDiagnostics?: CrunchyrollBridgeDiagnostics;
+  netflixBridgeDiagnostics?: NetflixBridgeDiagnostics;
+  providerDiagnostics?: ProviderDiagnostics;
+  currentResolution?: CurrentResolution;
+}
+
+export interface TrackerSessionSummary {
+  key: string;
+  tabId: number;
+  frameId: number;
+  providerId: string;
+  updatedAt: string;
+  active: boolean;
+  title?: string;
+  episode?: number;
+  canonicalUrl?: string;
+}
+
 export interface ProviderPageDiagnostic {
   providerId: string;
   active: boolean;
@@ -258,7 +284,7 @@ export type ExtensionMessage =
   | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
-  | { type: 'AUTH_STATUS' }
+  | { type: 'AUTH_STATUS'; activeTabId?: number }
   | { type: 'SETTINGS_GET' }
   | { type: 'SETTINGS_SET'; payload: ExtensionSettings }
   | { type: 'LIBRARY_GET' }
