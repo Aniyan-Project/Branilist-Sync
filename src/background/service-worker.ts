@@ -1,5 +1,5 @@
 import { authStatus, login, logout } from '../core/auth';
-import { getMe, resolveMedia, syncProgress } from '../core/api';
+import { getMe, resolveMedia, saveUserMapping, syncProgress } from '../core/api';
 import { SyncEngine, type SyncSnapshot } from '../core/sync-engine';
 import { trustedPopup, validateDetection } from '../core/message-policy';
 import type { DetectedMedia, ExtensionMessage } from '../core/types';
@@ -22,8 +22,24 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (message.type === 'TRACKER_DETECTED' || message.type === 'SYNC_PROGRESS') {
       const media = validateDetection(message.payload, sender);
       await chrome.storage.local.set({ [DETECTED]: media });
-      if (message.type === 'TRACKER_DETECTED') return { ok: true };
+      if (message.type === 'TRACKER_DETECTED') {
+        const status = await authStatus();
+        if (!status.authenticated) return { ok: true, authenticated: false };
+        try {
+          return { ok: true, authenticated: true, result: await resolveMedia(media) };
+        } catch {
+          return { ok: true, authenticated: true, resolveError: true };
+        }
+      }
       return { ok: true, lastSync: await engine.run(media) };
+    }
+    if (message.type === 'SAVE_USER_MAPPING') {
+      const media = validateDetection(message.payload.media, sender);
+      if (!Number.isSafeInteger(message.payload.mediaId) || message.payload.mediaId < 1) throw new Error('Mídia Branilist inválida.');
+      await saveUserMapping(media, message.payload.mediaId);
+      const result = await resolveMedia(media);
+      await chrome.storage.local.set({ [DETECTED]: media });
+      return { ok: true, result };
     }
     if (!trustedPopup(sender)) throw new Error('Ação permitida somente no popup.');
     if (message.type === 'AUTH_LOGIN') {
