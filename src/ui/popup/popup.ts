@@ -8,7 +8,7 @@ import type {
   SyncState,
 } from '../../core/types';
 
-const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
+const $ = <T extends Element = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 
 const accountSummary = $('#account-summary');
 const accountEl = $('#account');
