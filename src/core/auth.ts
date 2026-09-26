@@ -1,12 +1,20 @@
 const AUTH_BASE = 'https://branilist.com/oauth/authorize';
 const TOKEN_ENDPOINT = 'https://branilist.com/oauth/token';
-const CLIENT_ID = 'BRANILIST_CHROME_EXTENSION_CLIENT_ID';
+const REVOKE_ENDPOINT = 'https://branilist.com/oauth/revoke';
+const CLIENT_ID = 'branilist-sync';
 const STORAGE_KEY = 'branilist.auth';
+const EXPIRY_SKEW_MS = 30_000;
 
 interface StoredAuth {
   accessToken: string;
   refreshToken?: string;
   expiresAt: number;
+}
+
+interface TokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in: number;
 }
 
 function base64Url(bytes: Uint8Array): string {
@@ -18,6 +26,36 @@ function base64Url(bytes: Uint8Array): string {
 async function sha256(value: string): Promise<string> {
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return base64Url(new Uint8Array(hash));
+}
+
+async function loadAuth(): Promise<StoredAuth | null> {
+  const result = await chrome.storage.local.get(STORAGE_KEY);
+  return (result[STORAGE_KEY] as StoredAuth | undefined) ?? null;
+}
+
+async function saveAuth(token: TokenResponse, previousRefreshToken?: string): Promise<void> {
+  const auth: StoredAuth = {
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token ?? previousRefreshToken,
+    expiresAt: Date.now() + token.expires_in * 1000,
+  };
+
+  await chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+  await chrome.storage.local.set({ [STORAGE_KEY]: auth });
+}
+
+async function tokenRequest(body: URLSearchParams): Promise<TokenResponse> {
+  const response = await fetch(TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Falha OAuth: ${response.status}`);
+  }
+
+  return (await response.json()) as TokenResponse;
 }
 
 export async function login(): Promise<void> {
@@ -46,45 +84,76 @@ export async function login(): Promise<void> {
   const code = callback.searchParams.get('code');
   if (!code) throw new Error(callback.searchParams.get('error') ?? 'Código OAuth ausente');
 
-  const response = await fetch(TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
+  const token = await tokenRequest(
+    new URLSearchParams({
       grant_type: 'authorization_code',
       client_id: CLIENT_ID,
       code,
       redirect_uri: redirectUri,
       code_verifier: verifier,
     }),
-  });
-  if (!response.ok) throw new Error(`Falha ao trocar OAuth code: ${response.status}`);
+  );
 
-  const token = (await response.json()) as {
-    access_token: string;
-    refresh_token?: string;
-    expires_in: number;
-  };
+  await saveAuth(token);
+}
 
-  const auth: StoredAuth = {
-    accessToken: token.access_token,
-    refreshToken: token.refresh_token,
-    expiresAt: Date.now() + token.expires_in * 1000,
-  };
+export async function refreshAccessToken(force = false): Promise<string | null> {
+  const auth = await loadAuth();
+  if (!auth) return null;
 
-  await chrome.storage.local.set({ [STORAGE_KEY]: auth });
-  await chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+  if (!force && auth.expiresAt > Date.now() + EXPIRY_SKEW_MS) {
+    return auth.accessToken;
+  }
+
+  if (!auth.refreshToken) {
+    await chrome.storage.local.remove(STORAGE_KEY);
+    return null;
+  }
+
+  try {
+    const token = await tokenRequest(
+      new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: CLIENT_ID,
+        refresh_token: auth.refreshToken,
+      }),
+    );
+    await saveAuth(token, auth.refreshToken);
+    return token.access_token;
+  } catch (error) {
+    await chrome.storage.local.remove(STORAGE_KEY);
+    throw error;
+  }
+}
+
+async function revoke(raw?: string): Promise<void> {
+  if (!raw) return;
+  try {
+    await fetch(REVOKE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: raw }),
+    });
+  } catch {
+    // Logout local deve continuar mesmo se a rede estiver indisponível.
+  }
 }
 
 export async function logout(): Promise<void> {
-  await chrome.storage.local.remove(STORAGE_KEY);
+  const auth = await loadAuth();
+  try {
+    await revoke(auth?.refreshToken);
+    await revoke(auth?.accessToken);
+  } finally {
+    await chrome.storage.local.remove(STORAGE_KEY);
+  }
 }
 
 export async function authStatus(): Promise<{ authenticated: boolean }> {
-  const result = await chrome.storage.local.get(STORAGE_KEY);
-  return { authenticated: Boolean(result[STORAGE_KEY]?.accessToken) };
+  const auth = await loadAuth();
+  return { authenticated: Boolean(auth?.accessToken || auth?.refreshToken) };
 }
 
 export async function accessToken(): Promise<string | null> {
-  const result = await chrome.storage.local.get(STORAGE_KEY);
-  return result[STORAGE_KEY]?.accessToken ?? null;
+  return refreshAccessToken(false);
 }
