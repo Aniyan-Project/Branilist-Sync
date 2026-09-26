@@ -70,19 +70,38 @@ async function reportProgress(media: DetectedMedia): Promise<void> {
 function networkEpisodeToMedia(episode: CrunchyrollNetworkEpisode): DetectedMedia | null {
   const url = livePageUrl();
   const liveEpisodeId = crunchyrollMediaId(url);
-  if (!liveEpisodeId || liveEpisodeId !== episode.episodeProviderId) return null;
+  const token = (value: unknown): string | undefined =>
+    typeof value === 'string' && /^[A-Z0-9]{4,32}$/i.test(value) ? value : undefined;
+  const optionalText = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() && value.length <= 300 ? value.trim() : undefined;
+
+  const episodeProviderId = token(episode.episodeProviderId);
+  const seasonProviderId = episode.seasonProviderId == null ? undefined : token(episode.seasonProviderId);
+  const seriesProviderId = episode.seriesProviderId == null ? undefined : token(episode.seriesProviderId);
+  const seriesTitle = optionalText(episode.seriesTitle);
+  const episodeTitle = optionalText(episode.episodeTitle);
+  const seasonTitle = optionalText(episode.seasonTitle);
+  const episodeNumber = Number(episode.episode);
+
+  if (
+    !liveEpisodeId ||
+    liveEpisodeId !== episodeProviderId ||
+    !seriesTitle ||
+    !Number.isSafeInteger(episodeNumber) ||
+    episodeNumber < 1
+  ) return null;
 
   return {
     providerId: 'crunchyroll',
-    providerMediaId: episode.seasonProviderId ?? episode.episodeProviderId,
-    providerEpisodeId: episode.episodeProviderId,
-    providerSeasonId: episode.seasonProviderId,
-    providerSeriesId: episode.seriesProviderId,
+    providerMediaId: seasonProviderId ?? episodeProviderId,
+    providerEpisodeId: episodeProviderId,
+    providerSeasonId: seasonProviderId,
+    providerSeriesId: seriesProviderId,
     kind: 'ANIME',
-    title: episode.seriesTitle,
-    episode: episode.episode,
-    episodeTitle: episode.episodeTitle,
-    seasonTitle: episode.seasonTitle,
+    title: seriesTitle,
+    episode: episodeNumber,
+    episodeTitle,
+    seasonTitle,
     canonicalUrl: `${url.origin}${url.pathname}`,
   };
 }
