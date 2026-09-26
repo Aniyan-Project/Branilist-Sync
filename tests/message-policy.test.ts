@@ -10,6 +10,16 @@ it('accepts only its popup for privileged messages', () => {
 it('validates source and strips untrusted external IDs', () => {
   expect(validateDetection(media, { id, url, frameId: 0, tab: {} as chrome.tabs.Tab })).not.toHaveProperty('externalIds');
 });
+it('accepts a season identity only when bound to the current episode', () => {
+  const value = { ...media, providerMediaId: 'SEASON123', providerEpisodeId: 'G123', providerSeasonId: 'SEASON123', providerSeriesId: 'SERIES123' };
+  expect(validateDetection(value, { id, url, frameId: 0, tab: {} as chrome.tabs.Tab })).toMatchObject({
+    providerMediaId: 'SEASON123',
+    providerEpisodeId: 'G123',
+    providerSeasonId: 'SEASON123',
+    providerSeriesId: 'SERIES123',
+  });
+  expect(() => validateDetection({ ...value, providerEpisodeId: 'G999' }, { id, url, frameId: 0, tab: {} as chrome.tabs.Tab })).toThrow();
+});
 it.each([
   { id, url: 'https://evil.test/watch/G123', frameId: 0, tab: {} },
   { id, url, frameId: 1, tab: {} }, { id, url, frameId: 0 },
