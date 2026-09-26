@@ -88,3 +88,36 @@ it('does not keep detecting after the first successful detection', async () => {
   expect(mocks.detect).toHaveBeenCalledTimes(1);
   expect(mocks.toast).toHaveBeenCalledTimes(1);
 });
+
+
+it('remounts detection when Crunchyroll SPA metadata switches to the next episode', async () => {
+  const nextMedia = {
+    ...media,
+    providerMediaId: 'SEASON123',
+    providerEpisodeId: 'GNEXT123',
+    episode: 2,
+    canonicalUrl: 'https://www.crunchyroll.com/pt-br/watch/GNEXT123/next',
+  };
+  mocks.detect
+    .mockResolvedValueOnce(media)
+    .mockResolvedValueOnce(nextMedia);
+
+  await import('../src/content/index');
+  await Promise.resolve();
+  expect(mocks.detect).toHaveBeenCalledTimes(1);
+
+  const canonical = document.createElement('link');
+  canonical.rel = 'canonical';
+  canonical.href = nextMedia.canonicalUrl;
+  document.head.append(canonical);
+
+  await Promise.resolve();
+  await vi.advanceTimersByTimeAsync(10);
+  await Promise.resolve();
+
+  expect(mocks.detect).toHaveBeenCalledTimes(2);
+  expect(chrome.runtime.sendMessage).toHaveBeenLastCalledWith({
+    type: 'TRACKER_DETECTED',
+    payload: nextMedia,
+  });
+});
