@@ -2,6 +2,7 @@ import { providerForUrl } from '../core/provider-registry';
 import { crunchyrollMediaId } from '../providers/crunchyroll/meta';
 import type { CrunchyrollBridgeDiagnostics, DetectedMedia } from '../core/types';
 import type { CrunchyrollNetworkEpisode } from '../providers/crunchyroll/network';
+import { crunchyrollSeasonIdentity } from '../providers/crunchyroll/identity';
 import { showDetectionToast, showEpisodeChangeToast } from './toast';
 
 let cleanup: (() => void) | null = null;
@@ -97,6 +98,7 @@ function networkEpisodeToMedia(episode: CrunchyrollNetworkEpisode, expectedEpiso
   const episodeProviderId = token(episode.episodeProviderId);
   const seasonProviderId = episode.seasonProviderId == null ? undefined : token(episode.seasonProviderId);
   const seriesProviderId = episode.seriesProviderId == null ? undefined : token(episode.seriesProviderId);
+  const seasonSlug = typeof episode.seasonSlug === 'string' ? episode.seasonSlug.trim().toLowerCase() : undefined;
   const seriesTitle = optionalText(episode.seriesTitle);
   const episodeTitle = optionalText(episode.episodeTitle);
   const seasonTitle = optionalText(episode.seasonTitle);
@@ -112,9 +114,10 @@ function networkEpisodeToMedia(episode: CrunchyrollNetworkEpisode, expectedEpiso
 
   return {
     providerId: 'crunchyroll',
-    providerMediaId: seasonProviderId ?? seriesProviderId ?? episodeProviderId,
+    providerMediaId: crunchyrollSeasonIdentity(seriesProviderId, seasonSlug, seasonProviderId, episodeProviderId),
     providerEpisodeId: episodeProviderId,
     providerSeasonId: seasonProviderId,
+    providerSeasonSlug: seasonSlug,
     providerSeriesId: seriesProviderId,
     kind: 'ANIME',
     title: seriesTitle,
