@@ -2,6 +2,13 @@ export type MediaKind = 'ANIME' | 'MANGA';
 export type MediaTitleLanguage = 'AUTO' | 'PORTUGUESE' | 'ENGLISH' | 'ROMAJI' | 'NATIVE';
 export type LibraryStatus = 'PLANNING' | 'CURRENT' | 'COMPLETED' | 'PAUSED' | 'DROPPED';
 
+export interface ExtensionSettings {
+  autoSync: boolean;
+  showToast: boolean;
+  toastDurationSeconds: number;
+  quickPlusStartsCurrent: boolean;
+}
+
 export interface DetectedMedia {
   providerId: string;
   providerMediaId?: string;
@@ -166,6 +173,8 @@ export type ExtensionMessage =
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
   | { type: 'AUTH_STATUS' }
+  | { type: 'SETTINGS_GET' }
+  | { type: 'SETTINGS_SET'; payload: ExtensionSettings }
   | { type: 'LIBRARY_GET' }
   | { type: 'LIBRARY_UPDATE'; mediaId: number; payload: LibraryUpdate }
   | { type: 'MEDIA_GET'; mediaId: number }
