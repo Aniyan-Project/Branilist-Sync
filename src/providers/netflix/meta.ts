@@ -124,27 +124,32 @@ export function netflixSeasonIdentity(title: string, season: number): string {
   return `${netflixSeriesIdentity(title)}|season:${season}`;
 }
 
-export function parseNetflixEpisodeLabel(value: unknown): { season: number; episode: number } | null {
+export function parseNetflixSeasonNumber(value: unknown): number | null {
   const raw = text(value);
   if (!raw) return null;
 
-  const compact = raw.match(/\b(?:S|T)\s*(\d{1,4})\s*[:·•-]\s*E\s*(\d{1,5})\b/i);
-  if (compact) {
-    const season = safePositiveInteger(compact[1]);
-    const episode = safePositiveInteger(compact[2]);
-    return season && episode ? { season, episode } : null;
-  }
+  const compact = raw.match(/\b(?:S|T)\s*(\d{1,4})\s*(?=[:·•-]?\s*E\s*\d)/i);
+  if (compact) return safePositiveInteger(compact[1]);
 
-  const verbose = raw.match(
-    /\b(?:season|temporada|saison|staffel|stagione)\s*(\d{1,4})\b[^\d]{0,50}\b(?:episode|epis[oó]dio|épisode|folge|episodio)\s*(\d{1,5})\b/i,
-  );
-  if (verbose) {
-    const season = safePositiveInteger(verbose[1]);
-    const episode = safePositiveInteger(verbose[2]);
-    return season && episode ? { season, episode } : null;
-  }
+  const verbose = raw.match(/\b(?:season|temporada|saison|staffel|stagione)\s*(\d{1,4})\b/i);
+  return verbose ? safePositiveInteger(verbose[1]) : null;
+}
 
-  return null;
+export function parseNetflixEpisodeNumber(value: unknown): number | null {
+  const raw = text(value);
+  if (!raw) return null;
+
+  const compact = raw.match(/\bE\s*(\d{1,5})\b/i);
+  if (compact) return safePositiveInteger(compact[1]);
+
+  const verbose = raw.match(/\b(?:episode|epis[oó]dio|épisode|folge|episodio)\s*(\d{1,5})\b/i);
+  return verbose ? safePositiveInteger(verbose[1]) : null;
+}
+
+export function parseNetflixEpisodeLabel(value: unknown): { season: number; episode: number } | null {
+  const season = parseNetflixSeasonNumber(value);
+  const episode = parseNetflixEpisodeNumber(value);
+  return season && episode ? { season, episode } : null;
 }
 
 function candidateTexts(root: Element): string[] {
@@ -159,6 +164,53 @@ function candidateTexts(root: Element): string[] {
   }
 
   return values;
+}
+
+function seasonFromPlayer(document: Document, titleRoot: Element): number | null {
+  const roots = [
+    titleRoot.closest('[data-uia="watch-video"], [data-uia="video-player"], [data-uia="player"], .watch-video, .watch-video--player-view'),
+    document.querySelector('[data-uia="watch-video"]'),
+    document.querySelector('[data-uia="video-player"]'),
+    document.querySelector('.watch-video'),
+  ].filter((value): value is Element => Boolean(value));
+
+  const selectors = [
+    '[data-uia*="season"]',
+    '[aria-label*="Temporada" i]',
+    '[aria-label*="Season" i]',
+    '[aria-label*="Saison" i]',
+    '[aria-label*="Staffel" i]',
+    '[aria-label*="Stagione" i]',
+    'button',
+    'span',
+  ];
+
+  const seen = new Set<Element>();
+  for (const root of roots) {
+    for (const selector of selectors) {
+      for (const element of root.querySelectorAll(selector)) {
+        if (seen.has(element)) continue;
+        seen.add(element);
+        for (const value of [
+          element.textContent,
+          element.getAttribute('aria-label'),
+          element.getAttribute('data-uia'),
+        ]) {
+          const season = parseNetflixSeasonNumber(value);
+          if (season) return season;
+        }
+      }
+    }
+  }
+
+  for (const meta of document.querySelectorAll<HTMLMetaElement>(
+    'meta[name*="season" i], meta[property*="season" i]',
+  )) {
+    const season = parseNetflixSeasonNumber(meta.content);
+    if (season) return season;
+  }
+
+  return null;
 }
 
 function titleFromRoot(root: Element, values: string[]): string | null {
@@ -180,17 +232,22 @@ export function parseNetflixMetadata(url: URL, document: Document): NetflixMetad
 
   for (const root of roots) {
     const rootText = text(root.textContent);
-    const numbering = parseNetflixEpisodeLabel(rootText);
-    if (!rootText || !numbering) continue;
+    const episode = parseNetflixEpisodeNumber(rootText);
+    if (!rootText || !episode) continue;
 
+    const explicitSeason = parseNetflixSeasonNumber(rootText);
+    const season = explicitSeason ?? seasonFromPlayer(document, root);
+    if (!season) continue;
+
+    const numbering = { season, episode };
     const values = candidateTexts(root);
     const seriesTitle = titleFromRoot(root, values);
     if (!seriesTitle) continue;
 
-    const labelIndex = values.findIndex(value => parseNetflixEpisodeLabel(value) !== null);
+    const labelIndex = values.findIndex(value => parseNetflixEpisodeNumber(value) !== null);
     const episodeTitle = values
       .slice(labelIndex >= 0 ? labelIndex + 1 : 0)
-      .find(value => value !== seriesTitle && !parseNetflixEpisodeLabel(value));
+      .find(value => value !== seriesTitle && parseNetflixEpisodeNumber(value) === null && parseNetflixSeasonNumber(value) === null);
 
     const providerSeriesId = netflixSeriesIdentity(seriesTitle);
     const providerSeasonId = String(numbering.season);
