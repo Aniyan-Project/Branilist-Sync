@@ -339,3 +339,34 @@ it('clears the tracker when Crunchyroll SPA navigates from watch to a non-episod
     },
   });
 });
+
+
+it('uses series ID as provider identity when Crunchyroll omits season ID', async () => {
+  mocks.detect.mockResolvedValue(null);
+  vi.stubGlobal('location', new URL('https://www.crunchyroll.com/pt-br/watch/GPWUKD78W/episode-2'));
+
+  await import('../src/content/index');
+  await Promise.resolve();
+
+  window.dispatchEvent(new CustomEvent('branilist-sync:crunchyroll-network-episode', {
+    detail: JSON.stringify({
+      episodeProviderId: 'GPWUKD78W',
+      seriesProviderId: 'G24H1N334',
+      seriesTitle: 'The Detective Is Already Dead',
+      episodeTitle: 'Episode 2',
+      episode: 2,
+    }),
+  }));
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'TRACKER_DETECTED',
+    payload: expect.objectContaining({
+      providerMediaId: 'G24H1N334',
+      providerEpisodeId: 'GPWUKD78W',
+      providerSeriesId: 'G24H1N334',
+      episode: 2,
+    }),
+  });
+});
