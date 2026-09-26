@@ -2,3 +2,4 @@ node_modules/
 dist/
 dist-ts/
 .env
+public/icons/branilist-128.png
