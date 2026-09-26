@@ -1,6 +1,7 @@
 import type {
   BranilistProfile,
   DetectedMedia,
+  EpisodeNavigationState,
   ExtensionSettings,
   LibraryEntry,
   LibraryStatus,
@@ -89,6 +90,7 @@ let libraryLoaded = false;
 let selectedEntry: LibraryEntry | null = null;
 let currentMatchedMedia: MediaDetail | null = null;
 let currentEntry: LibraryEntry | null = null;
+let episodeNavigation: EpisodeNavigationState | null = null;
 let history: Array<SyncState & { occurredAt?: string }> = [];
 let settings: ExtensionSettings = {
   autoSync: true,
@@ -257,6 +259,30 @@ function activateTab(name: string) {
     view.classList.toggle('active', view.dataset.view === name);
   });
   if (name === 'library' && authenticated && !libraryLoaded) void loadLibrary();
+}
+
+function renderEpisodeNavigation(nav: EpisodeNavigationState | null, media: DetectedMedia | null) {
+  episodeNavigation = nav;
+  if (!nav || nav.episodeProviderId === media?.providerEpisodeId) return false;
+
+  currentMatchEl.hidden = true;
+  currentMatchedMedia = null;
+  currentEntry = null;
+  currentList.hidden = true;
+  currentMediaEl.hidden = false;
+  currentEmptyEl.hidden = true;
+  currentMediaTitleEl.textContent = 'Mudança de episódio detectada';
+  currentMediaDetailEl.textContent = `crunchyroll • episódio ${nav.episodeProviderId} • aguardando metadados do novo episódio…`;
+  currentFlow.replaceChildren();
+
+  const detectedStep = document.createElement('span');
+  detectedStep.className = 'sync-step done';
+  detectedStep.textContent = 'Mudança detectada';
+  const waitingStep = document.createElement('span');
+  waitingStep.className = 'sync-step warn';
+  waitingStep.textContent = 'Aguardando metadados';
+  currentFlow.append(detectedStep, waitingStep);
+  return true;
 }
 
 function renderCurrentMedia(media: DetectedMedia | null) {
@@ -621,7 +647,8 @@ async function refreshSession() {
       : 'Conta Branilist vinculada'
     : 'Conta não vinculada';
 
-  accountSummary.textContent = label;
+  const extensionVersion = chrome.runtime.getManifest?.().version ?? 'dev';
+  accountSummary.textContent = `${label} • v${extensionVersion}`;
   accountEl.textContent = response.profileError ? `${label} • ${response.profileError}` : label;
   profileButton.textContent = profile?.username?.slice(0, 1).toUpperCase() || 'B';
   authButton.textContent = authenticated ? 'Desvincular conta' : 'Vincular conta';
@@ -637,9 +664,13 @@ async function refreshSession() {
 
   const detected = (response.lastDetected ?? null) as DetectedMedia | null;
   const lastSync = (response.lastSync ?? null) as SyncState | null;
-  renderCurrentMedia(detected);
-  renderCurrentFlow(lastSync);
-  await hydrateCurrentMatch(detected, lastSync);
+  const navigation = (response.episodeNavigation ?? null) as EpisodeNavigationState | null;
+  const waitingForNewEpisode = renderEpisodeNavigation(navigation, detected);
+  if (!waitingForNewEpisode) {
+    renderCurrentMedia(detected);
+    renderCurrentFlow(lastSync);
+    await hydrateCurrentMatch(detected, lastSync);
+  }
 
   pending = response.pending ?? [];
   renderPendingList(lastSync);
