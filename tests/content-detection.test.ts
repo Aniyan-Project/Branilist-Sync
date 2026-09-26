@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   detect: vi.fn(),
   observe: vi.fn(),
   toast: vi.fn(),
+  episodeToast: vi.fn(),
 }));
 
 vi.mock('../src/core/provider-registry', () => ({
@@ -21,6 +22,7 @@ vi.mock('../src/core/provider-registry', () => ({
 
 vi.mock('../src/content/toast', () => ({
   showDetectionToast: mocks.toast,
+  showEpisodeChangeToast: mocks.episodeToast,
 }));
 
 const media = {
@@ -41,6 +43,7 @@ beforeEach(() => {
   mocks.detect.mockReset();
   mocks.observe.mockReset();
   mocks.toast.mockReset();
+  mocks.episodeToast.mockReset();
   mocks.observe.mockReturnValue(() => undefined);
   vi.stubGlobal('location', new URL('https://www.crunchyroll.com/pt-br/watch/GMKUXG2E0/example'));
   vi.stubGlobal('chrome', {
@@ -162,4 +165,31 @@ it('uses the live Crunchyroll URL as authority even while canonical metadata is 
     type: 'TRACKER_DETECTED',
     payload: nextMedia,
   });
+});
+
+
+it('emits immediate episode navigation state and toast when the live watch ID changes', async () => {
+  mocks.detect.mockResolvedValue(media);
+
+  await import('../src/content/index');
+  await Promise.resolve();
+
+  (location as unknown as URL).href = 'https://www.crunchyroll.com/pt-br/watch/G8WUN0X72/next';
+  await vi.advanceTimersByTimeAsync(300);
+  await Promise.resolve();
+
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'EPISODE_NAVIGATED',
+    payload: expect.objectContaining({
+      providerId: 'crunchyroll',
+      previousEpisodeId: 'GMKUXG2E0',
+      episodeProviderId: 'G8WUN0X72',
+      canonicalUrl: 'https://www.crunchyroll.com/pt-br/watch/G8WUN0X72/next',
+    }),
+  });
+  expect(mocks.episodeToast).toHaveBeenCalledWith(
+    'GMKUXG2E0',
+    'G8WUN0X72',
+    expect.any(Number),
+  );
 });
