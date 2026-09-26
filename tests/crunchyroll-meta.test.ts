@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { crunchyrollMediaId, parseEpisodeNumber } from '../src/providers/crunchyroll/meta';
+import { crunchyrollMediaId, crunchyrollSeriesId, parseEpisodeNumber } from '../src/providers/crunchyroll/meta';
 
 describe('crunchyrollMediaId', () => {
   it('extracts the stable watch id', () => {
@@ -10,6 +10,18 @@ describe('crunchyrollMediaId', () => {
 
   it('does not match non-watch pages', () => {
     expect(crunchyrollMediaId(new URL('https://www.crunchyroll.com/series/ABC/example'))).toBeNull();
+  });
+});
+
+describe('crunchyrollSeriesId', () => {
+  it('extracts localized series ids', () => {
+    expect(
+      crunchyrollSeriesId(new URL('https://www.crunchyroll.com/pt-br/series/G24H1N334/the-detective-is-already-dead')),
+    ).toBe('G24H1N334');
+  });
+
+  it('does not confuse watch ids with series ids', () => {
+    expect(crunchyrollSeriesId(new URL('https://www.crunchyroll.com/watch/GMKUXG2E0/example'))).toBeNull();
   });
 });
 
