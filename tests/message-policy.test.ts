@@ -47,3 +47,23 @@ it('accepts a live SPA canonical episode even when sender.url is still the previ
     canonicalUrl: 'https://www.crunchyroll.com/watch/G456',
   });
 });
+
+
+it('uses series identity when season identity is unavailable', () => {
+  const value = {
+    ...media,
+    providerMediaId: 'SERIES123',
+    providerEpisodeId: 'G123',
+    providerSeriesId: 'SERIES123',
+  };
+  expect(validateDetection(value, {
+    id,
+    url,
+    frameId: 0,
+    tab: {} as chrome.tabs.Tab,
+  })).toMatchObject({
+    providerMediaId: 'SERIES123',
+    providerEpisodeId: 'G123',
+    providerSeriesId: 'SERIES123',
+  });
+});
