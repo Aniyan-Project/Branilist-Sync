@@ -7,7 +7,9 @@ import {
   netflixWatchId,
   netflixWatchIdFromDocument,
   parseNetflixEpisodeLabel,
+  parseNetflixEpisodeNumber,
   parseNetflixMetadata,
+  parseNetflixSeasonNumber,
 } from '../src/providers/netflix/meta';
 
 afterEach(() => {
@@ -36,10 +38,28 @@ describe('parseNetflixEpisodeLabel', () => {
     expect(parseNetflixEpisodeLabel(input)).toEqual(expected);
   });
 
-  it.each(['Episode 4', 'Temporada 2', '', null, undefined])(
-    'rejects incomplete label %p',
+  it.each(['Episode 4', 'E4', 'Temporada 2', '', null, undefined])(
+    'rejects incomplete combined label %p',
     input => expect(parseNetflixEpisodeLabel(input)).toBeNull(),
   );
+
+  it.each([
+    ['E1', 1],
+    ['E12', 12],
+    ['Episódio 3', 3],
+    ['Episode 7', 7],
+  ])('parses standalone episode number %p', (input, expected) => {
+    expect(parseNetflixEpisodeNumber(input)).toBe(expected);
+  });
+
+  it.each([
+    ['T1:E1', 1],
+    ['S2:E5', 2],
+    ['Temporada 3', 3],
+    ['Season 4', 4],
+  ])('parses standalone season number %p', (input, expected) => {
+    expect(parseNetflixSeasonNumber(input)).toBe(expected);
+  });
 });
 
 describe('parseNetflixMetadata', () => {
@@ -63,6 +83,33 @@ describe('parseNetflixMetadata', () => {
       season: 1,
       episode: 5,
       episodeTitle: 'Phantoms of the Dead',
+      seasonTitle: 'Season 1',
+    });
+  });
+
+  it('parses the real Netflix E1 title layout when season is exposed elsewhere in the player', () => {
+    document.body.innerHTML = `
+      <div data-uia="watch-video">
+        <button data-uia="season-selector">Temporada 1</button>
+        <div data-uia="video-title">
+          <h4>Mushoku Tensei: Jobless Reincarnation</h4>
+          <span>E1</span>
+          <span>Episódio 1</span>
+        </div>
+      </div>
+    `;
+
+    expect(
+      parseNetflixMetadata(new URL('https://www.netflix.com/watch/81402901'), document),
+    ).toEqual({
+      providerMediaId: netflixSeasonIdentity('Mushoku Tensei: Jobless Reincarnation', 1),
+      episodeProviderId: '81402901',
+      providerSeasonId: '1',
+      providerSeriesId: netflixSeriesIdentity('Mushoku Tensei: Jobless Reincarnation'),
+      seriesTitle: 'Mushoku Tensei: Jobless Reincarnation',
+      season: 1,
+      episode: 1,
+      episodeTitle: undefined,
       seasonTitle: 'Season 1',
     });
   });
