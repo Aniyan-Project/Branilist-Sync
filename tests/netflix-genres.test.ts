@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classifyNetflixGenreLabels,
   classifyNetflixGenres,
   extractNetflixGenreIdsFromTitleHtml,
+  extractNetflixGenreLabelsFromTitleDocument,
   NETFLIX_ANIME_GENRE_IDS,
 } from '../src/providers/netflix/genres';
 
@@ -45,4 +47,39 @@ describe('Netflix anime genre classification', () => {
     expect(extractNetflixGenreIdsFromTitleHtml('<html><body>No genres</body></html>')).toEqual([]);
     expect(classifyNetflixGenres([]).isAnime).toBe(false);
   });
+});
+
+
+it('classifies anime from the scoped Netflix genres section when numeric ids are absent', () => {
+  const document = new DOMParser().parseFromString(`
+    <div class="more-details-cell cell-genres">
+      <div class="more-details-label">Genres</div>
+      <span class="more-details-item item-genres">Sci-Fi & Fantasy Anime</span>
+      <span class="more-details-item item-genres">Anime based on Light Novels</span>
+      <span class="more-details-item item-genres">Anime Series</span>
+    </div>
+    <div>Recommended: Anime title elsewhere</div>
+  `, 'text/html');
+
+  const labels = extractNetflixGenreLabelsFromTitleDocument(document);
+  expect(labels).toEqual([
+    'Sci-Fi & Fantasy Anime',
+    'Anime based on Light Novels',
+    'Anime Series',
+  ]);
+  expect(classifyNetflixGenreLabels(labels)).toBe(true);
+});
+
+it('does not treat unrelated page text mentioning anime as genre evidence', () => {
+  const document = new DOMParser().parseFromString(`
+    <div class="more-details-cell cell-genres">
+      <span class="more-details-item item-genres">Crime TV Shows</span>
+      <span class="more-details-item item-genres">TV Dramas</span>
+    </div>
+    <section>Because you watched Anime Series</section>
+  `, 'text/html');
+
+  const labels = extractNetflixGenreLabelsFromTitleDocument(document);
+  expect(labels).toEqual(['Crime TV Shows', 'TV Dramas']);
+  expect(classifyNetflixGenreLabels(labels)).toBe(false);
 });
