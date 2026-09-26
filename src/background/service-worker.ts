@@ -132,6 +132,17 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
 
       const previous = ((await chrome.storage.local.get(NETFLIX_BRIDGE_DIAG))[NETFLIX_BRIDGE_DIAG] ?? {}) as NetflixBridgeDiagnostics;
       const payload = message.payload;
+      const safeGenreIds = Array.isArray(payload.genreIds)
+        ? [...new Set(payload.genreIds
+            .map(value => Number(value))
+            .filter(value => Number.isSafeInteger(value) && value > 0 && value <= 999999999))]
+            .slice(0, 100)
+        : previous.genreIds;
+      const safeGenreStatus = typeof payload.genreStatus === 'number' && Number.isInteger(payload.genreStatus)
+        ? payload.genreStatus
+        : typeof payload.genreStatus === 'string'
+          ? payload.genreStatus.slice(0, 80)
+          : previous.genreStatus;
       const next: NetflixBridgeDiagnostics = {
         ...previous,
         ...payload,
@@ -148,6 +159,11 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         lastSeriesId: typeof payload.lastSeriesId === 'string' && /^\d{4,20}$/.test(payload.lastSeriesId)
           ? payload.lastSeriesId
           : previous.lastSeriesId,
+        genreStatus: safeGenreStatus,
+        genreIds: safeGenreIds,
+        animeConfirmed: typeof payload.animeConfirmed === 'boolean'
+          ? payload.animeConfirmed
+          : previous.animeConfirmed,
       };
       await chrome.storage.local.set({ [NETFLIX_BRIDGE_DIAG]: next });
       return { ok: true };
