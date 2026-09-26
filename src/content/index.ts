@@ -4,8 +4,12 @@ import type { DetectedMedia } from '../core/types';
 let cleanup: (() => void) | null = null;
 let mountedHref = '';
 
-async function emit(media: DetectedMedia): Promise<void> {
+async function reportDetected(media: DetectedMedia): Promise<void> {
   await chrome.runtime.sendMessage({ type: 'TRACKER_DETECTED', payload: media });
+}
+
+async function reportProgress(media: DetectedMedia): Promise<void> {
+  await chrome.runtime.sendMessage({ type: 'SYNC_PROGRESS', payload: media });
 }
 
 function mountForCurrentPage(): void {
@@ -22,10 +26,10 @@ function mountForCurrentPage(): void {
   const ctx = { url, document };
 
   void provider.detect(ctx).then((media) => {
-    if (media) void emit(media);
+    if (media) void reportDetected(media);
   });
 
-  cleanup = provider.observe?.(ctx, (media) => void emit(media)) ?? null;
+  cleanup = provider.observe?.(ctx, (media) => void reportProgress(media)) ?? null;
 }
 
 mountForCurrentPage();
