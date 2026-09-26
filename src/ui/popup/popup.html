@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Branilist Sync</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; width: 300px; margin: 0; padding: 18px; }
+      h1 { font-size: 18px; margin: 0 0 8px; }
+      p { line-height: 1.45; opacity: .8; }
+      button { width: 100%; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
+      #status { margin: 12px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Branilist Sync</h1>
+    <p>Acompanhamento automático de episódios e capítulos.</p>
+    <div id="status">Verificando conta…</div>
+    <button id="auth">Vincular conta</button>
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>
