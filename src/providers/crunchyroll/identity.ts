@@ -26,7 +26,6 @@ export function crunchyrollLegacyMappingIds(input: {
 }): string[] {
   const ids = [
     input.providerSeasonId,
-    input.providerSeriesId,
     input.providerEpisodeId,
   ].filter((value): value is string => Boolean(value && value !== input.providerMediaId));
   return [...new Set(ids)];
