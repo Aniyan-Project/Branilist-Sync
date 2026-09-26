@@ -30,6 +30,25 @@ export interface ResolveResult {
   duplicate?: boolean;
 }
 
+export interface CatalogSearchItem {
+  id: number;
+  slug: string;
+  type: MediaKind;
+  format: string;
+  title: {
+    romaji?: string | null;
+    english?: string | null;
+    portuguese?: string | null;
+  };
+  coverImage?: string | null;
+  averageScore?: number | null;
+  popularity: number;
+}
+
+export interface CatalogSearchResponse {
+  items: CatalogSearchItem[];
+}
+
 export interface BranilistProfile {
   id: number;
   username: string;
@@ -75,6 +94,7 @@ export interface TrackerProvider {
 export type ExtensionMessage =
   | { type: 'SYNC_RETRY'; retryId: string }
   | { type: 'TRACKER_DETECTED'; payload: DetectedMedia }
+  | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
   | { type: 'AUTH_STATUS' }

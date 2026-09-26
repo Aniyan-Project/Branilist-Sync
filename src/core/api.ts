@@ -85,6 +85,22 @@ export async function getProviders(): Promise<ProvidersResponse> {
   );
 }
 
+export async function saveUserMapping(media: DetectedMedia, mediaId: number): Promise<void> {
+  if (!media.providerMediaId) throw new Error('Identidade do provider ausente');
+
+  const response = await authorizedFetch('/mappings/user', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      provider: media.providerId,
+      providerMediaId: media.providerMediaId,
+      mediaType: media.kind,
+      mediaId,
+    }),
+  });
+  await jsonResponse<{ ok: boolean; mediaId: number }>(response, 'Correção de correspondência');
+}
+
 export async function resolveMedia(media: DetectedMedia): Promise<ResolveResult> {
   const response = await authorizedFetch('/resolve', {
     method: 'POST',

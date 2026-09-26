@@ -4,6 +4,14 @@ Extensão oficial do **Branilist** para acompanhar automaticamente anime e mang�
 
 O Branilist Sync detecta a mídia e o progresso em sites compatíveis, pede ao backend para resolver a obra com segurança e só então envia uma atualização idempotente da lista.
 
+## v0.5.0 — Toast e correção manual de correspondência
+
+A extensão agora mostra feedback diretamente na página suportada. Quando o backend não consegue confirmar o match, o usuário pode pesquisar o catálogo Branilist e salvar um override pessoal sem criar mappings globais.
+
+A v0.5.0 requer o backend com migration `000104` antes do smoke real da correção manual.
+
+Veja [notas da v0.5.0](RELEASE-v0.5.0.md).
+
 ## v0.4.2 — Identidade estável de temporada no Crunchyroll
 
 O item de rascunho da loja usa o ID `kimfpnbfjfmpkjpcmfnjeoefakhcoclh` e a chave pública do manifest mantém essa identidade localmente.
