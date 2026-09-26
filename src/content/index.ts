@@ -1,6 +1,6 @@
 import { providerForUrl } from '../core/provider-registry';
 import { crunchyrollMediaId } from '../providers/crunchyroll/meta';
-import type { DetectedMedia } from '../core/types';
+import type { CrunchyrollBridgeDiagnostics, DetectedMedia } from '../core/types';
 import type { CrunchyrollNetworkEpisode } from '../providers/crunchyroll/network';
 import { showDetectionToast, showEpisodeChangeToast } from './toast';
 
@@ -105,6 +105,17 @@ function networkEpisodeToMedia(episode: CrunchyrollNetworkEpisode): DetectedMedi
     canonicalUrl: `${url.origin}${url.pathname}`,
   };
 }
+
+window.addEventListener('branilist-sync:crunchyroll-network-diagnostic', event => {
+  const raw = (event as CustomEvent<string>).detail;
+  if (typeof raw !== 'string' || raw.length > 4096) return;
+  try {
+    const payload = JSON.parse(raw) as Partial<CrunchyrollBridgeDiagnostics>;
+    void chrome.runtime.sendMessage({ type: 'BRIDGE_DIAGNOSTIC', payload }).catch(() => undefined);
+  } catch {
+    // Ignore malformed diagnostics from the page world.
+  }
+});
 
 window.addEventListener('branilist-sync:crunchyroll-network-episode', event => {
   const raw = (event as CustomEvent<string>).detail;
