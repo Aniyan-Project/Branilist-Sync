@@ -1,3 +1,4 @@
+import { ANIME_COMPLETION_PERCENT } from '../core/tracking';
 import { observeVideoProgress } from '../core/video-progress';
 import type { DetectedMedia, TrackerProvider } from '../core/types';
 import { parseCrunchyrollMetadata } from './crunchyroll/meta';
@@ -35,7 +36,7 @@ export const crunchyrollProvider: TrackerProvider = {
     });
 
     const stopProgress = observeVideoProgress(ctx.document, {
-      thresholdPercent: 80,
+      thresholdPercent: ANIME_COMPLETION_PERCENT,
       onThreshold(progressPercent) {
         if (!current?.episode) return;
 
