@@ -64,6 +64,7 @@ export interface LibraryMedia {
   id: number;
   slug: string;
   type: MediaKind;
+  format: string;
   title: {
     romaji?: string | null;
     english?: string | null;
@@ -71,7 +72,12 @@ export interface LibraryMedia {
     native?: string | null;
   };
   coverImage?: string | null;
-  total?: number | null;
+  bannerImage?: string | null;
+  description?: string | null;
+  episodes?: number | null;
+  chapters?: number | null;
+  averageScore?: number | null;
+  popularity: number;
 }
 
 export interface LibraryEntry {
@@ -80,6 +86,7 @@ export interface LibraryEntry {
   progress: number;
   score?: number | null;
   repeatCount: number;
+  updatedAt?: string;
   media: LibraryMedia;
 }
 

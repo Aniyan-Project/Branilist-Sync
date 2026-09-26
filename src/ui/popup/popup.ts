@@ -22,6 +22,11 @@ const currentMediaEl = $('#current-media');
 const currentMediaTitleEl = $('#current-media-title');
 const currentMediaDetailEl = $('#current-media-detail');
 const currentEmptyEl = $('#current-empty');
+const currentMatchEl = $('#current-match');
+const currentCover = $('#current-cover') as HTMLImageElement;
+const currentBranilistTitle = $('#current-branilist-title');
+const currentBranilistMeta = $('#current-branilist-meta');
+const currentOpen = $('#current-open') as HTMLButtonElement;
 
 const pendingContentEl = $('#pending-content');
 const pendingEmptyEl = $('#pending-empty');
@@ -37,12 +42,15 @@ const retryButton = $('#retry') as HTMLButtonElement;
 
 const librarySearch = $('#library-search') as HTMLInputElement;
 const libraryStatus = $('#library-status') as HTMLSelectElement;
+const libraryType = $('#library-type') as HTMLSelectElement;
+const librarySort = $('#library-sort') as HTMLSelectElement;
 const libraryList = $('#library-list');
 const libraryEmpty = $('#library-empty');
-const libraryError = $('#library-error');
+const libraryState = $('#library-state');
 const libraryBrowser = $('#library-browser');
 const libraryDetail = $('#library-detail');
 const detailBack = $('#detail-back') as HTMLButtonElement;
+const detailPlus = $('#detail-plus') as HTMLButtonElement;
 const detailHero = $('#detail-hero');
 const detailDescription = $('#detail-description');
 const detailForm = $('#detail-form') as HTMLFormElement;
@@ -60,6 +68,15 @@ let pending: SyncState[] = [];
 let library: LibraryEntry[] = [];
 let libraryLoaded = false;
 let selectedEntry: LibraryEntry | null = null;
+let currentMatchedMedia: MediaDetail | null = null;
+
+const statusLabels: Record<LibraryStatus, string> = {
+  PLANNING: 'Planejando',
+  CURRENT: 'Assistindo/Lendo',
+  COMPLETED: 'Completo',
+  PAUSED: 'Pausado',
+  DROPPED: 'Abandonado',
+};
 
 function titleFor(
   titles: { romaji?: string | null; english?: string | null; portuguese?: string | null; native?: string | null },
@@ -85,6 +102,10 @@ function titleFor(
   return 'Título indisponível';
 }
 
+function totalFor(entry: LibraryEntry): number | null {
+  return entry.media.type === 'ANIME' ? entry.media.episodes ?? null : entry.media.chapters ?? null;
+}
+
 function mediaDetail(media: DetectedMedia): string {
   const progress = media.episode
     ? `Episódio ${media.episode}`
@@ -101,6 +122,20 @@ function mediaDetail(media: DetectedMedia): string {
   return `${media.providerId} • ${progress}${ids ? ` • ${ids}` : ''}`;
 }
 
+function mediaUrl(media: Pick<MediaDetail, 'type' | 'slug'>): string {
+  return `https://branilist.com/${media.type.toLowerCase()}/${encodeURIComponent(media.slug)}`;
+}
+
+function setLibraryState(message = '', error = false) {
+  libraryState.textContent = message;
+  libraryState.classList.toggle('error', error);
+}
+
+function setDetailFeedback(message = '', error = false) {
+  detailFeedback.textContent = message;
+  detailFeedback.classList.toggle('error', error);
+}
+
 function activateTab(name: string) {
   document.querySelectorAll<HTMLElement>('.tab').forEach(tab => {
     tab.classList.toggle('active', tab.dataset.tab === name);
@@ -112,6 +147,8 @@ function activateTab(name: string) {
 }
 
 function renderCurrentMedia(media: DetectedMedia | null) {
+  currentMatchEl.hidden = true;
+  currentMatchedMedia = null;
   if (!media) {
     currentMediaEl.hidden = true;
     currentEmptyEl.hidden = false;
@@ -121,6 +158,31 @@ function renderCurrentMedia(media: DetectedMedia | null) {
   currentEmptyEl.hidden = true;
   currentMediaTitleEl.textContent = media.title;
   currentMediaDetailEl.textContent = mediaDetail(media);
+}
+
+async function hydrateCurrentMatch(media: DetectedMedia | null, lastSync?: SyncState | null) {
+  currentMatchEl.hidden = true;
+  currentMatchedMedia = null;
+  const result = lastSync?.result;
+  if (!media || !result?.matched || result.requiresConfirmation || !result.mediaId) return;
+  if (lastSync?.media?.canonicalUrl && lastSync.media.canonicalUrl !== media.canonicalUrl) return;
+
+  const response = await chrome.runtime.sendMessage({ type: 'MEDIA_GET', mediaId: result.mediaId });
+  if (!response?.ok || !response.media) return;
+
+  const detail = response.media as MediaDetail;
+  currentMatchedMedia = detail;
+  currentCover.removeAttribute('src');
+  if (detail.coverImage) currentCover.src = detail.coverImage;
+  currentBranilistTitle.textContent = titleFor(detail.title, profile?.titleLanguage, profile?.localeCode);
+  const total = detail.type === 'ANIME' ? detail.episodes : detail.chapters;
+  currentBranilistMeta.textContent = [
+    'Correspondência segura',
+    detail.format,
+    detail.seasonYear,
+    total ? `${total} ${detail.type === 'ANIME' ? 'eps.' : 'caps.'}` : null,
+  ].filter(Boolean).join(' • ');
+  currentMatchEl.hidden = false;
 }
 
 function renderPending(state: SyncState | null) {
@@ -189,19 +251,76 @@ function renderPendingList(lastSync?: SyncState | null) {
   renderPending(selected ?? null);
 }
 
-function renderLibrary() {
+function sortedLibrary(): LibraryEntry[] {
   const query = librarySearch.value.trim().toLowerCase();
   const status = libraryStatus.value;
+  const type = libraryType.value;
 
   const filtered = library.filter(entry => {
     const title = titleFor(entry.media.title, profile?.titleLanguage, profile?.localeCode).toLowerCase();
-    return (!query || title.includes(query)) && (!status || entry.status === status);
+    return (!query || title.includes(query))
+      && (!status || entry.status === status)
+      && (!type || entry.media.type === type);
   });
 
+  return filtered.sort((a, b) => {
+    switch (librarySort.value) {
+      case 'TITLE_ASC':
+        return titleFor(a.media.title, profile?.titleLanguage, profile?.localeCode)
+          .localeCompare(titleFor(b.media.title, profile?.titleLanguage, profile?.localeCode), profile?.localeCode ?? 'pt-BR');
+      case 'PROGRESS_DESC':
+        return b.progress - a.progress;
+      case 'SCORE_DESC':
+        return (b.score ?? -1) - (a.score ?? -1);
+      default:
+        return Date.parse(b.updatedAt ?? '') - Date.parse(a.updatedAt ?? '');
+    }
+  });
+}
+
+async function updateEntry(entry: LibraryEntry, progress: number, status = entry.status) {
+  const payload = {
+    status,
+    progress,
+    score: entry.score ?? null,
+    repeatCount: entry.repeatCount,
+  };
+  const response = await chrome.runtime.sendMessage({ type: 'LIBRARY_UPDATE', mediaId: entry.mediaId, payload });
+  if (!response?.ok) throw new Error(response?.error ?? 'Não foi possível atualizar a lista.');
+  entry.status = status;
+  entry.progress = progress;
+  entry.updatedAt = new Date().toISOString();
+}
+
+async function incrementEntry(entry: LibraryEntry, button?: HTMLButtonElement) {
+  const total = totalFor(entry);
+  const next = entry.progress + 1;
+  if (total !== null && next > total) return;
+  if (button) button.disabled = true;
+  try {
+    const nextStatus: LibraryStatus = entry.status === 'PLANNING' ? 'CURRENT' : entry.status;
+    await updateEntry(entry, next, nextStatus);
+    renderLibrary();
+    if (selectedEntry?.mediaId === entry.mediaId) {
+      detailStatus.value = entry.status;
+      detailProgress.value = String(entry.progress);
+      detailPlus.disabled = total !== null && entry.progress >= total;
+      setDetailFeedback('Progresso atualizado.');
+    }
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function renderLibrary() {
+  const filtered = sortedLibrary();
   libraryList.replaceChildren();
   libraryEmpty.hidden = filtered.length > 0;
 
   for (const entry of filtered) {
+    const row = document.createElement('div');
+    row.className = 'library-row';
+
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'library-item';
@@ -216,9 +335,10 @@ function renderLibrary() {
     strong.textContent = titleFor(entry.media.title, profile?.titleLanguage, profile?.localeCode);
     const progress = document.createElement('div');
     progress.className = 'progress';
-    progress.textContent = entry.media.total
-      ? `${entry.progress} / ${entry.media.total} • ${entry.status}`
-      : `${entry.progress} • ${entry.status}`;
+    const total = totalFor(entry);
+    progress.textContent = total
+      ? `${entry.progress} / ${total} • ${statusLabels[entry.status]}`
+      : `${entry.progress} • ${statusLabels[entry.status]}`;
     copy.append(strong, progress);
 
     const score = document.createElement('div');
@@ -227,27 +347,40 @@ function renderLibrary() {
 
     button.append(img, copy, score);
     button.addEventListener('click', () => void openDetail(entry));
-    libraryList.append(button);
+
+    const plus = document.createElement('button');
+    plus.type = 'button';
+    plus.className = 'quick-plus';
+    plus.textContent = '+1';
+    plus.title = entry.media.type === 'ANIME' ? 'Adicionar 1 episódio' : 'Adicionar 1 capítulo';
+    plus.disabled = total !== null && entry.progress >= total;
+    plus.addEventListener('click', () => void incrementEntry(entry, plus).catch(showError));
+
+    row.append(button, plus);
+    libraryList.append(row);
+  }
+
+  if (libraryLoaded) {
+    setLibraryState(`${filtered.length} de ${library.length} obras`);
   }
 }
 
 async function loadLibrary(force = false) {
   if (!authenticated) {
-    libraryError.textContent = 'Vincule sua conta para acessar sua lista.';
+    setLibraryState('Vincule sua conta para acessar sua lista.', true);
     return;
   }
   if (libraryLoaded && !force) return;
-  libraryError.textContent = 'Carregando sua lista…';
+  setLibraryState('Carregando sua lista…');
 
   const response = await chrome.runtime.sendMessage({ type: 'LIBRARY_GET' });
   if (!response?.ok) {
-    libraryError.textContent = response?.error ?? 'Não foi possível carregar sua lista.';
+    setLibraryState(response?.error ?? 'Não foi possível carregar sua lista.', true);
     return;
   }
 
   library = response.items ?? [];
   libraryLoaded = true;
-  libraryError.textContent = '';
   renderLibrary();
 }
 
@@ -255,13 +388,13 @@ async function openDetail(entry: LibraryEntry) {
   selectedEntry = entry;
   libraryBrowser.hidden = true;
   libraryDetail.classList.add('active');
-  detailFeedback.textContent = 'Carregando detalhes…';
+  setDetailFeedback('Carregando detalhes…');
   detailHero.replaceChildren();
   detailDescription.textContent = '';
 
   const response = await chrome.runtime.sendMessage({ type: 'MEDIA_GET', mediaId: entry.mediaId });
   if (!response?.ok) {
-    detailFeedback.textContent = response?.error ?? 'Não foi possível carregar os detalhes.';
+    setDetailFeedback(response?.error ?? 'Não foi possível carregar os detalhes.', true);
     return;
   }
 
@@ -271,10 +404,13 @@ async function openDetail(entry: LibraryEntry) {
 
   detailStatus.value = entry.status;
   detailProgress.value = String(entry.progress);
-  detailProgress.max = String(media.type === 'ANIME' ? media.episodes ?? '' : media.chapters ?? '');
+  const total = media.type === 'ANIME' ? media.episodes : media.chapters;
+  detailProgress.max = total == null ? '' : String(total);
   detailScore.value = entry.score ? String(entry.score) : '';
   detailRepeat.value = String(entry.repeatCount);
-  detailFeedback.textContent = '';
+  detailPlus.textContent = media.type === 'ANIME' ? '+1 episódio' : '+1 capítulo';
+  detailPlus.disabled = total !== null && total !== undefined && entry.progress >= total;
+  setDetailFeedback();
 }
 
 function renderDetailHero(entry: LibraryEntry, media: MediaDetail) {
@@ -337,9 +473,13 @@ async function refreshSession() {
     ? `Client: ${response.oauth.clientId}\nID: ${response.oauth.extensionId}\nCallback: ${response.oauth.redirectUri}`
     : '';
 
-  renderCurrentMedia((response.lastDetected ?? null) as DetectedMedia | null);
+  const detected = (response.lastDetected ?? null) as DetectedMedia | null;
+  const lastSync = (response.lastSync ?? null) as SyncState | null;
+  renderCurrentMedia(detected);
+  await hydrateCurrentMatch(detected, lastSync);
+
   pending = response.pending ?? [];
-  renderPendingList(response.lastSync ?? null);
+  renderPendingList(lastSync);
 
   if (!authenticated) {
     library = [];
@@ -366,6 +506,12 @@ document.querySelectorAll<HTMLButtonElement>('.tab').forEach(button => {
 profileButton.addEventListener('click', () => activateTab('settings'));
 librarySearch.addEventListener('input', renderLibrary);
 libraryStatus.addEventListener('change', renderLibrary);
+libraryType.addEventListener('change', renderLibrary);
+librarySort.addEventListener('change', renderLibrary);
+
+currentOpen.addEventListener('click', () => {
+  if (currentMatchedMedia) void chrome.tabs.create({ url: mediaUrl(currentMatchedMedia) });
+});
 
 pendingSelect.addEventListener('change', () => {
   const state = pending.find(item => item.retryId === pendingSelect.value);
@@ -384,7 +530,11 @@ detailBack.addEventListener('click', () => {
   selectedEntry = null;
   libraryDetail.classList.remove('active');
   libraryBrowser.hidden = false;
-  detailFeedback.textContent = '';
+  setDetailFeedback();
+});
+
+detailPlus.addEventListener('click', () => {
+  if (selectedEntry) void incrementEntry(selectedEntry, detailPlus).catch(error => setDetailFeedback(error instanceof Error ? error.message : 'Falha ao atualizar progresso.', true));
 });
 
 detailForm.addEventListener('submit', event => {
@@ -403,7 +553,13 @@ detailForm.addEventListener('submit', event => {
     if (!Number.isInteger(payload.progress) || payload.progress < 0 ||
         !Number.isInteger(payload.repeatCount) || payload.repeatCount < 0 ||
         (payload.score !== null && (payload.score < 0.5 || payload.score > 10 || (payload.score * 2) % 1 !== 0))) {
-      detailFeedback.textContent = 'Confira progresso, nota e repetições.';
+      setDetailFeedback('Confira progresso, nota e repetições.', true);
+      return;
+    }
+
+    const total = totalFor(selectedEntry);
+    if (total !== null && payload.progress > total) {
+      setDetailFeedback('O progresso não pode ultrapassar o total da obra.', true);
       return;
     }
 
@@ -418,9 +574,11 @@ detailForm.addEventListener('submit', event => {
     selectedEntry.progress = payload.progress;
     selectedEntry.score = payload.score;
     selectedEntry.repeatCount = payload.repeatCount;
+    selectedEntry.updatedAt = new Date().toISOString();
+    detailPlus.disabled = total !== null && selectedEntry.progress >= total;
     renderLibrary();
-    detailFeedback.textContent = 'Lista atualizada.';
-  });
+    setDetailFeedback('Lista atualizada com sucesso.');
+  }).catch(error => setDetailFeedback(error instanceof Error ? error.message : 'Não foi possível atualizar a lista.', true));
 });
 
 refreshButton.addEventListener('click', () => void busy(refreshButton, async () => {

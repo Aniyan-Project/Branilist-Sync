@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Branilist Sync",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Acompanhamento automático oficial do Branilist para anime e mangá.",
   "permissions": [
     "storage",
@@ -18,7 +18,11 @@
   },
   "action": {
     "default_popup": "src/ui/popup/popup.html",
-    "default_title": "Branilist Sync"
+    "default_title": "Branilist Sync",
+    "default_icon": {
+      "16": "icons/branilist-48.png",
+      "32": "icons/branilist-48.png"
+    }
   },
   "content_scripts": [
     {
@@ -32,5 +36,11 @@
       "run_at": "document_idle"
     }
   ],
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6UJYE7zYjkJIK4mZGMwzuaKUtYkR7KqzqUlBuc/EuM6rt1IIpivSzP1aIcypmEHtU7pfn0VgMvmfLfd9VZBCCPA9vUKw43VO1onwy+gkSsK88PiLt+SaPP8WNlo0zUZjnEdr+B5IzvaoYOcFTHq1GOR9aSXzwfn1uhCnQmUx/rK8c9Q9EIdFahfkFuA9nvjqXt9iGXA4rriDOHV4oiTOYY5SXYFAHcldyCO4Dtxsazkv8ABMfXE37D16q5zIc3rClQX9O/H6NXsOehiV8IXJRqTe0mhzy7AaL4Y655KPs1J0WhHETik4FdNF3FiKigUWVdr+inAQyUaJPB1NnTSHYwIDAQAB"
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6UJYE7zYjkJIK4mZGMwzuaKUtYkR7KqzqUlBuc/EuM6rt1IIpivSzP1aIcypmEHtU7pfn0VgMvmfLfd9VZBCCPA9vUKw43VO1onwy+gkSsK88PiLt+SaPP8WNlo0zUZjnEdr+B5IzvaoYOcFTHq1GOR9aSXzwfn1uhCnQmUx/rK8c9Q9EIdFahfkFuA9nvjqXt9iGXA4rriDOHV4oiTOYY5SXYFAHcldyCO4Dtxsazkv8ABMfXE37D16q5zIc3rClQX9O/H6NXsOehiV8IXJRqTe0mhzy7AaL4Y655KPs1J0WhHETik4FdNF3FiKigUWVdr+inAQyUaJPB1NnTSHYwIDAQAB",
+  "icons": {
+    "16": "icons/branilist-48.png",
+    "32": "icons/branilist-48.png",
+    "48": "icons/branilist-48.png",
+    "128": "icons/branilist-128.png"
+  }
 }
