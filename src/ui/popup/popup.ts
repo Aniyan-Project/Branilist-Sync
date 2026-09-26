@@ -723,6 +723,7 @@ async function refreshSession() {
       netflixBridge.genreIds?.length ? `Genre IDs: ${netflixBridge.genreIds.join(', ')}` : null,
       netflixBridge.genreLabels?.length ? `Gêneros: ${netflixBridge.genreLabels.join(' • ')}` : null,
       netflixBridge.genreSource ? `Fonte dos gêneros: ${netflixBridge.genreSource}` : null,
+      netflixBridge.genreFetchMode ? `Consulta de gêneros: ${netflixBridge.genreFetchMode}` : null,
       typeof netflixBridge.animeConfirmed === 'boolean'
         ? `Anime confirmado: ${netflixBridge.animeConfirmed ? 'SIM' : 'não'}`
         : null,
