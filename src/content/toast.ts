@@ -1,4 +1,4 @@
-import type { CatalogSearchItem, CatalogSearchResponse, DetectedMedia, ResolveResult } from '../core/types';
+import type { CatalogSearchItem, CatalogSearchResponse, DetectedMedia, ExtensionSettings, ResolveResult } from '../core/types';
 
 const SEARCH_BASE = 'https://branilist.com/api/v1/search';
 
@@ -21,6 +21,7 @@ export interface DetectionFeedback {
   authenticated?: boolean;
   result?: ResolveResult;
   resolveError?: boolean;
+  settings?: ExtensionSettings;
 }
 
 export function showDetectionToast(media: DetectedMedia, feedback: DetectionFeedback): void {
@@ -198,5 +199,5 @@ export function showDetectionToast(media: DetectedMedia, feedback: DetectionFeed
 
   window.setTimeout(() => {
     if (!panel.classList.contains('open')) host.remove();
-  }, 30000);
+  }, Math.max(5, Math.min(120, feedback.settings?.toastDurationSeconds ?? 30)) * 1000);
 }
