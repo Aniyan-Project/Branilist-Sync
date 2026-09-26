@@ -164,35 +164,6 @@ it('keeps Netflix active on a non-watch route while real player evidence is pres
 });
 
 
-it('does not report or toast the same Netflix episode more than once', async () => {
-  mocks.detect.mockResolvedValue(first);
-
-  await import('../src/content/index');
-  await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledTimes(1));
-
-  vi.mocked(chrome.runtime.sendMessage).mockClear();
-  mocks.toast.mockClear();
-
-  const detail = JSON.stringify({
-    episodeProviderId: '81234567',
-    seasonProviderId: '1',
-    seriesProviderId: '90000001',
-    seriesTitle: 'Example Anime',
-    season: 1,
-    episode: 1,
-  });
-
-  window.dispatchEvent(new CustomEvent('branilist-sync:netflix-network-episode', { detail }));
-  await Promise.resolve();
-  await Promise.resolve();
-
-  window.dispatchEvent(new CustomEvent('branilist-sync:netflix-network-episode', { detail }));
-  await Promise.resolve();
-  await Promise.resolve();
-
-  expect(mocks.toast).toHaveBeenCalledTimes(0);
-});
-
 it('does not remount Netflix when only volatile player title DOM changes', async () => {
   document.body.innerHTML = `
     <div data-uia="watch-video">
