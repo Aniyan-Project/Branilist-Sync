@@ -89,3 +89,53 @@ it('accepts a stable series plus season slug identity for Crunchyroll', () => {
     providerSeasonSlug: 'season-one-portuguese-dub',
   });
 });
+
+
+it('validates Netflix detections with stable title and season identity', () => {
+  const netflix = {
+    providerId: 'netflix',
+    providerMediaId: '81234567?s=1',
+    providerEpisodeId: '81600002',
+    providerSeriesId: '81234567',
+    providerSeasonNumber: 1,
+    kind: 'ANIME',
+    title: 'Example Anime',
+    episode: 2,
+    canonicalUrl: 'https://www.netflix.com/watch/81600002',
+  };
+  expect(validateDetection(netflix, {
+    id,
+    url: 'https://www.netflix.com/watch/81600001',
+    frameId: 0,
+    tab: {} as chrome.tabs.Tab,
+  })).toMatchObject({
+    providerId: 'netflix',
+    providerMediaId: '81234567?s=1',
+    providerEpisodeId: '81600002',
+    providerSeriesId: '81234567',
+    providerSeasonNumber: 1,
+    episode: 2,
+  });
+});
+
+it('rejects Netflix metadata whose watch ID or stable identity does not match', () => {
+  const netflix = {
+    providerId: 'netflix',
+    providerMediaId: '81234567?s=1',
+    providerEpisodeId: '81600002',
+    providerSeriesId: '81234567',
+    providerSeasonNumber: 1,
+    kind: 'ANIME',
+    title: 'Example Anime',
+    episode: 2,
+    canonicalUrl: 'https://www.netflix.com/watch/81600002',
+  };
+  expect(() => validateDetection(
+    { ...netflix, providerMediaId: '81234567?s=2' },
+    { id, url: 'https://www.netflix.com/watch/81600001', frameId: 0, tab: {} as chrome.tabs.Tab },
+  )).toThrow();
+  expect(() => validateDetection(
+    { ...netflix, providerEpisodeId: '81600003' },
+    { id, url: 'https://www.netflix.com/watch/81600001', frameId: 0, tab: {} as chrome.tabs.Tab },
+  )).toThrow();
+});
