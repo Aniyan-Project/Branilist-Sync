@@ -4,6 +4,14 @@ Extensão oficial do **Branilist** para acompanhar automaticamente anime e mang�
 
 O Branilist Sync detecta a mídia e o progresso em sites compatíveis, pede ao backend para resolver a obra com segurança e só então envia uma atualização idempotente da lista.
 
+## v0.8.0 — Fundação multi-provider + Netflix
+
+A v0.8.0 torna o lifecycle do content script independente de Crunchyroll e adiciona o primeiro suporte conservador à Netflix.
+
+Na Netflix, a extensão só ativa em páginas `/watch/<id>` e exige título, temporada e episódio antes de reportar qualquer mídia. O progresso continua usando o threshold de 90%, o matching continua passando pelo backend e qualquer correspondência incerta permanece bloqueada até confirmação.
+
+Veja [notas da v0.8.0](RELEASE-v0.8.0.md).
+
 ## v0.5.0 — Toast e correção manual de correspondência
 
 A extensão agora mostra feedback diretamente na página suportada. Quando o backend não consegue confirmar o match, o usuário pode pesquisar o catálogo Branilist e salvar um override pessoal sem criar mappings globais.
@@ -72,8 +80,8 @@ match seguro?
 
 ## Estado dos providers
 
-- **Crunchyroll:** integração ativa para anime, ainda exigindo validação com páginas reais antes da publicação na Chrome Web Store.
-- **Netflix:** scaffold, desativado.
+- **Crunchyroll:** integração ativa para anime, com detecção SPA e network bridge especializado.
+- **Netflix:** suporte inicial da v0.8.0 para anime; parser fail-safe e tracking a 90%, pendente de smoke real antes do merge/release.
 - **Comikey:** scaffold, desativado.
 
 ## Desenvolvimento
