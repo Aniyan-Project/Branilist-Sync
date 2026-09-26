@@ -1,0 +1,16 @@
+{
+  "name": "branilist-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && vite build && cp manifest.json dist/manifest.json",
+    "dev": "vite build --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11"
+  }
+}
