@@ -124,6 +124,17 @@ export function netflixSeasonIdentity(title: string, season: number): string {
   return `${netflixSeriesIdentity(title)}|season:${season}`;
 }
 
+export function netflixProviderMediaIdentity(
+  seriesProviderId: string | undefined,
+  title: string,
+  season: number,
+): string {
+  const stableSeriesId = seriesProviderId && /^\d{4,20}$/.test(seriesProviderId)
+    ? seriesProviderId
+    : netflixSeriesIdentity(title);
+  return `${stableSeriesId}|season:${season}`;
+}
+
 export function parseNetflixSeasonNumber(value: unknown): number | null {
   const raw = text(value);
   if (!raw) return null;
