@@ -1,6 +1,7 @@
 import { providerForUrl } from '../core/provider-registry';
 import { crunchyrollMediaId } from '../providers/crunchyroll/meta';
 import type { DetectedMedia } from '../core/types';
+import type { CrunchyrollNetworkEpisode } from '../providers/crunchyroll/network';
 import { showDetectionToast, showEpisodeChangeToast } from './toast';
 
 let cleanup: (() => void) | null = null;
@@ -64,6 +65,62 @@ async function reportDetected(media: DetectedMedia): Promise<void> {
 async function reportProgress(media: DetectedMedia): Promise<void> {
   await chrome.runtime.sendMessage({ type: 'SYNC_PROGRESS', payload: media });
 }
+
+
+function networkEpisodeToMedia(episode: CrunchyrollNetworkEpisode): DetectedMedia | null {
+  const url = livePageUrl();
+  const liveEpisodeId = crunchyrollMediaId(url);
+  if (!liveEpisodeId || liveEpisodeId !== episode.episodeProviderId) return null;
+
+  return {
+    providerId: 'crunchyroll',
+    providerMediaId: episode.seasonProviderId ?? episode.episodeProviderId,
+    providerEpisodeId: episode.episodeProviderId,
+    providerSeasonId: episode.seasonProviderId,
+    providerSeriesId: episode.seriesProviderId,
+    kind: 'ANIME',
+    title: episode.seriesTitle,
+    episode: episode.episode,
+    episodeTitle: episode.episodeTitle,
+    seasonTitle: episode.seasonTitle,
+    canonicalUrl: `${url.origin}${url.pathname}`,
+  };
+}
+
+window.addEventListener('branilist-sync:crunchyroll-network-episode', event => {
+  const detail = (event as CustomEvent<CrunchyrollNetworkEpisode>).detail;
+  if (!detail || typeof detail !== 'object') return;
+  const media = networkEpisodeToMedia(detail);
+  if (!media) return;
+
+  const previousEpisodeId = currentEpisodeId;
+  currentEpisodeId = media.providerEpisodeId;
+  mountedKey = '';
+
+  if (previousEpisodeId && previousEpisodeId !== media.providerEpisodeId) {
+    void chrome.runtime.sendMessage({
+      type: 'EPISODE_NAVIGATED',
+      payload: {
+        providerId: 'crunchyroll',
+        previousEpisodeId,
+        episodeProviderId: media.providerEpisodeId!,
+        canonicalUrl: media.canonicalUrl,
+        detectedAt: new Date().toISOString(),
+      },
+    }).then(response => {
+      if (response?.ok && response.settings?.showToast !== false) {
+        showEpisodeChangeToast(
+          previousEpisodeId,
+          media.providerEpisodeId!,
+          response.settings?.toastDurationSeconds ?? 12,
+        );
+      }
+    }).catch(() => undefined);
+  }
+
+  void reportDetected(media).catch(() => undefined);
+  mountForCurrentPage(true);
+});
 
 function mountForCurrentPage(force = false): void {
   const key = pageKey();
