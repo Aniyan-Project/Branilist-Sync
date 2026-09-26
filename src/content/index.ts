@@ -234,6 +234,41 @@ function networkEpisodeToMedia(
   };
 }
 
+window.addEventListener('branilist-sync:netflix-watch-changed', event => {
+  const raw = (event as CustomEvent<string>).detail;
+  if (typeof raw !== 'string' || raw.length > 1024) return;
+
+  try {
+    const payload = JSON.parse(raw) as { watchId?: unknown; canonicalUrl?: unknown };
+    const watchId = typeof payload.watchId === 'string' && /^\d{4,20}$/.test(payload.watchId)
+      ? payload.watchId
+      : null;
+    const url = livePageUrl();
+    const liveId = netflixWatchIdFromDocument(url, document);
+
+    if (!watchId || liveId !== watchId) return;
+
+    setNetflixNetworkEpisode(null);
+    mountedKey = '';
+    lastSuccessfulDetectionKey = '';
+    detectionReportInFlight = null;
+    cleanup?.();
+    cleanup = null;
+
+    void chrome.runtime.sendMessage({
+      type: 'NETFLIX_WATCH_CHANGED',
+      payload: {
+        watchId,
+        canonicalUrl: `${url.origin}${url.pathname}`,
+      },
+    }).catch(() => undefined);
+
+    mountForCurrentPage(true);
+  } catch {
+    // Ignore malformed page-world navigation hints.
+  }
+});
+
 window.addEventListener('branilist-sync:netflix-network-diagnostic', event => {
   const raw = (event as CustomEvent<string>).detail;
   if (typeof raw !== 'string' || raw.length > 4096) return;
