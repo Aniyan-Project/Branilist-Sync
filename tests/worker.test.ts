@@ -237,3 +237,40 @@ it('clears the current resolution when leaving a watch page', async () => {
   expect(cleared.ok).toBe(true);
   expect(storage['branilist.current-resolution']).toBeUndefined();
 });
+
+
+it('migrates a trusted episode-level correction to the stable Crunchyroll season identity', async () => {
+  const stableMedia = {
+    ...media,
+    providerMediaId: 'SERIES123|season-one-portuguese-dub',
+    providerEpisodeId: 'G123',
+    providerSeriesId: 'SERIES123',
+    providerSeasonSlug: 'season-one-portuguese-dub',
+  };
+
+  mocks.resolve
+    .mockResolvedValueOnce({
+      matched: false,
+      requiresConfirmation: true,
+      confidence: 0,
+      action: 'REQUIRES_CONFIRMATION',
+      previousProgress: 0,
+      newProgress: 0,
+    })
+    .mockResolvedValueOnce(safe);
+
+  const detected = await send({ type: 'TRACKER_DETECTED', payload: stableMedia });
+  expect(detected.ok).toBe(true);
+  expect(detected.result).toEqual(safe);
+
+  expect(mocks.resolve).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    providerMediaId: 'SERIES123|season-one-portuguese-dub',
+  }));
+  expect(mocks.resolve).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    providerMediaId: 'G123',
+  }));
+  expect(mocks.saveMapping).toHaveBeenCalledWith(
+    expect.objectContaining({ providerMediaId: 'SERIES123|season-one-portuguese-dub' }),
+    42,
+  );
+});
