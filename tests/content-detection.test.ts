@@ -319,3 +319,23 @@ it('uses cached prefetched metadata for the episode selected by the live URL', a
     }),
   });
 });
+
+
+it('clears the tracker when Crunchyroll SPA navigates from watch to a non-episode page', async () => {
+  mocks.detect.mockResolvedValue(media);
+
+  await import('../src/content/index');
+  await Promise.resolve();
+
+  (location as unknown as URL).href = 'https://www.crunchyroll.com/series/G24H1N334/the-detective-is-already-dead';
+  await vi.advanceTimersByTimeAsync(300);
+  await Promise.resolve();
+
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'TRACKER_CLEARED',
+    payload: {
+      providerId: 'crunchyroll',
+      canonicalUrl: 'https://www.crunchyroll.com/series/G24H1N334/the-detective-is-already-dead',
+    },
+  });
+});
