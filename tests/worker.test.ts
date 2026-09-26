@@ -274,3 +274,44 @@ it('migrates a trusted episode-level correction to the stable Crunchyroll season
     42,
   );
 });
+
+
+it('persists active Netflix player diagnostics before metadata is detected', async () => {
+  const netflixSource = {
+    id,
+    url: 'https://www.netflix.com/browse',
+    frameId: 0,
+    tab: {},
+  } as chrome.runtime.MessageSender;
+
+  const diagnostic = await send({
+    type: 'PROVIDER_DIAGNOSTIC',
+    payload: {
+      providerId: 'netflix',
+      active: true,
+      canonicalUrl: 'https://www.netflix.com/browse',
+      pathname: '/browse',
+      hasVideo: true,
+      hasPlayerRoot: true,
+      hasTitleRoot: true,
+      hasWatchId: false,
+      playerTitleText: 'Mushoku Tensei: Jobless Reincarnation T1:E1',
+    },
+  }, netflixSource);
+
+  expect(diagnostic.ok).toBe(true);
+
+  const status = await send({ type: 'AUTH_STATUS' }, popup);
+  expect(status.providerDiagnostics).toMatchObject({
+    providerId: 'netflix',
+    active: true,
+    lastCanonicalUrl: 'https://www.netflix.com/browse',
+    lastPathname: '/browse',
+    hasVideo: true,
+    hasPlayerRoot: true,
+    hasTitleRoot: true,
+    hasWatchId: false,
+    playerTitleText: 'Mushoku Tensei: Jobless Reincarnation T1:E1',
+  });
+  expect(status.providerDiagnostics.lastProbeAt).toBeTruthy();
+});
