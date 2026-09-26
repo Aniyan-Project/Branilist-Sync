@@ -6,7 +6,7 @@ const relevant = (url: string) => /\/cms\/(?:objects|episodes?)\//i.test(url) ||
 function emitFrom(url: string, payload: unknown) {
   if (!relevant(url)) return;
   for (const episode of extractCrunchyrollNetworkEpisodes(payload)) {
-    window.dispatchEvent(new CustomEvent(EVENT, { detail: episode }));
+    window.dispatchEvent(new CustomEvent(EVENT, { detail: JSON.stringify(episode) }));
   }
 }
 
