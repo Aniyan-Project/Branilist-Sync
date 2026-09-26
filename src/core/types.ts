@@ -2,6 +2,17 @@ export type MediaKind = 'ANIME' | 'MANGA';
 export type MediaTitleLanguage = 'AUTO' | 'PORTUGUESE' | 'ENGLISH' | 'ROMAJI' | 'NATIVE';
 export type LibraryStatus = 'PLANNING' | 'CURRENT' | 'COMPLETED' | 'PAUSED' | 'DROPPED';
 
+export interface CrunchyrollBridgeDiagnostics {
+  active: boolean;
+  startedAt?: string;
+  jsonResponsesSeen: number;
+  lastRequestUrl?: string;
+  lastRequestAt?: string;
+  lastEpisodeId?: string;
+  lastEpisodeNumber?: number;
+  lastEpisodeAt?: string;
+}
+
 export interface EpisodeNavigationState {
   providerId: string;
   previousEpisodeId?: string;
@@ -178,6 +189,7 @@ export type ExtensionMessage =
   | { type: 'SYNC_RETRY'; retryId: string }
   | { type: 'TRACKER_DETECTED'; payload: DetectedMedia }
   | { type: 'EPISODE_NAVIGATED'; payload: EpisodeNavigationState }
+  | { type: 'BRIDGE_DIAGNOSTIC'; payload: Partial<CrunchyrollBridgeDiagnostics> }
   | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
