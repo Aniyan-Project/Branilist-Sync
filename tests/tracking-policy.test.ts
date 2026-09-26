@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ANIME_COMPLETION_PERCENT, shouldTrackProgress, stableEventKey } from '../src/core/tracking';
+import { ANIME_COMPLETION_PERCENT, shouldTrackProgress } from '../src/core/tracking';
 import type { DetectedMedia } from '../src/core/types';
 
 const anime: DetectedMedia = {
@@ -32,11 +32,4 @@ describe('tracking policy', () => {
     expect(shouldTrackProgress({ ...manga, chapter: 12.5 })).toBe(false);
   });
 
-  it('keeps idempotency keys stable for an exact retry', () => {
-    const occurredAt = '2026-09-26T04:00:00.000Z';
-    expect(stableEventKey(anime, occurredAt)).toBe(stableEventKey({ ...anime }, occurredAt));
-    expect(stableEventKey(anime, occurredAt)).not.toBe(
-      stableEventKey({ ...anime, episode: 4 }, occurredAt),
-    );
-  });
 });

@@ -15,6 +15,10 @@
       .error { border-color: #c85d5d; background: #fff3f3; }
       button { width: 100%; padding: 10px 12px; border-radius: 8px; cursor: pointer; margin-top: 8px; }
       a { color: inherit; }
+      button:disabled { cursor: wait; opacity: .6; }
+      [hidden] { display: none !important; }
+      select { width: 100%; padding: 8px; }
+      #oauth { overflow-wrap: anywhere; }
       #media, #sync { display: none; }
     </style>
   </head>
@@ -22,21 +26,25 @@
     <h1>Branilist Sync</h1>
     <p>Acompanhamento automático seguro de episódios e capítulos.</p>
 
-    <div id="account" class="card">Verificando conta…</div>
+    <div id="account" class="card" role="status">Verificando conta…</div>
+    <label id="pending-label" hidden>Pendências <select id="pending"></select></label>
 
     <div id="media" class="card">
       <strong id="media-title"></strong>
       <div id="media-detail" class="muted"></div>
     </div>
 
-    <div id="sync" class="card">
+    <div id="sync" class="card" role="status" aria-live="polite">
       <strong id="sync-title"></strong>
       <div id="sync-message"></div>
       <div id="sync-candidates" class="muted"></div>
     </div>
+    <button id="retry" type="button" hidden>Tentar novamente</button>
+    <button id="refresh" type="button">Atualizar estado</button>
 
     <button id="auth">Vincular conta</button>
     <button id="open" type="button">Abrir Branilist</button>
+    <details><summary>Diagnóstico de conexão</summary><p id="oauth" class="muted"></p></details>
 
     <script type="module" src="./popup.ts"></script>
   </body>

@@ -1,40 +1,35 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 permissions:
   contents: read
-
 jobs:
   validate:
-    runs-on: ubuntu-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
       - name: Tests
-        run: pnpm test
-
+        run: npm test
       - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Build
-        run: pnpm build
+        run: npm run typecheck
+      - name: Build and validate Chrome package
+        run: npm run build
+      - name: Upload draft package
+        uses: actions/upload-artifact@v4
+        with:
+          name: branilist-sync-0.4.0-${{ runner.os }}
+          path: dist/
+          if-no-files-found: error

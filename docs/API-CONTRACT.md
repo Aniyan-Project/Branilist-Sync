@@ -33,7 +33,18 @@ O backend pode retornar `candidates`, mas esta versão ainda não possui endpoin
 
 Anime só é enviado após pelo menos 90% do episódio. Mangá usa capítulo inteiro.
 
-Cada escrita envia `Idempotency-Key`. Retries internos reutilizam a mesma chave e o mesmo payload.
+Cada escrita envia `Idempotency-Key` com UUID aleatório. O evento é persistido antes
+do envio. Retries por 401, popup e reinício do worker reutilizam a mesma chave,
+`occurredAt` e payload. Nenhum botão aceita mediaId ou remove `seasonTitle` para
+forçar matching. Logout/login limpa os eventos locais para separar contas.
+
+O popup pode consultar `/resolve` novamente após revisão por operador. Não existe
+endpoint de confirmação manual pela extensão. Um resultado `REQUIRES_CONFIRMATION`
+persistido pelo backend permanece idempotente; o mesmo evento não força reprocessamento.
+
+Sucesso de tracking exige `matched: true`, `requiresConfirmation: false`, mediaId
+inteiro positivo, confiança entre 0.9 e 1 e ação `PROGRESS_UPDATED` ou `UNCHANGED`.
+Resposta desconhecida não é exibida como sincronização concluída.
 
 Resposta típica:
 

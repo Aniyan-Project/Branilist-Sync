@@ -1,124 +1,60 @@
 import { authStatus, login, logout } from '../core/auth';
 import { getMe, resolveMedia, syncProgress } from '../core/api';
-import { shouldTrackProgress } from '../core/tracking';
-import type { BranilistProfile, DetectedMedia, ExtensionMessage, SyncState } from '../core/types';
+import { SyncEngine, type SyncSnapshot } from '../core/sync-engine';
+import { trustedPopup, validateDetection } from '../core/message-policy';
+import type { DetectedMedia, ExtensionMessage } from '../core/types';
 
-const lastEvent = new Map<string, number>();
-let lastDetected: DetectedMedia | null = null;
-let lastSync: SyncState = { status: 'idle', updatedAt: new Date().toISOString() };
-
-function dedupeKey(payload: { providerId: string; canonicalUrl: string; episode?: number; chapter?: number }) {
-  return `${payload.providerId}:${payload.canonicalUrl}:${payload.episode ?? ''}:${payload.chapter ?? ''}`;
-}
-
-function setSync(state: Omit<SyncState, 'updatedAt'>) {
-  lastSync = { ...state, updatedAt: new Date().toISOString() };
-}
-
-async function profileIfAuthenticated(): Promise<BranilistProfile | null> {
-  const status = await authStatus();
-  if (!status.authenticated) return null;
-  try {
-    return await getMe();
-  } catch {
-    return null;
-  }
-}
-
-chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
-  void (async () => {
-    try {
-      if (message.type === 'AUTH_LOGIN') {
-        await login();
-        sendResponse({ ok: true, profile: await profileIfAuthenticated() });
-        return;
-      }
-
-      if (message.type === 'AUTH_LOGOUT') {
-        await logout();
-        setSync({ status: 'idle', message: 'Conta desvinculada.' });
-        sendResponse({ ok: true });
-        return;
-      }
-
-      if (message.type === 'AUTH_STATUS') {
-        const status = await authStatus();
-        sendResponse({
-          ok: true,
-          ...status,
-          profile: status.authenticated ? await profileIfAuthenticated() : null,
-          lastDetected,
-          lastSync,
-        });
-        return;
-      }
-
-      if (message.type === 'TRACKER_DETECTED') {
-        lastDetected = message.payload;
-        setSync({ status: 'detected', media: message.payload, message: 'Mídia detectada.' });
-        sendResponse({ ok: true });
-        return;
-      }
-
-      if (message.type === 'SYNC_PROGRESS') {
-        lastDetected = message.payload;
-
-        if (!shouldTrackProgress(message.payload)) {
-          setSync({ status: 'ignored', media: message.payload, message: 'Progresso abaixo do limite seguro.' });
-          sendResponse({ ok: true, ignored: true });
-          return;
-        }
-
-        const key = dedupeKey(message.payload);
-        const previous = lastEvent.get(key) ?? 0;
-        if (Date.now() - previous < 15_000) {
-          sendResponse({ ok: true, deduped: true });
-          return;
-        }
-        lastEvent.set(key, Date.now());
-
-        const resolution = await resolveMedia(message.payload);
-        if (!resolution.matched || resolution.requiresConfirmation) {
-          setSync({
-            status: 'confirmation_required',
-            media: message.payload,
-            result: resolution,
-            message: resolution.reason ?? 'O Branilist precisa confirmar a correspondência antes de atualizar sua lista.',
-          });
-          sendResponse({ ok: true, requiresConfirmation: true, result: resolution });
-          return;
-        }
-
-        setSync({ status: 'resolved', media: message.payload, result: resolution, message: 'Correspondência segura encontrada.' });
-
-        const result = await syncProgress(message.payload);
-        if (result.requiresConfirmation) {
-          setSync({
-            status: 'confirmation_required',
-            media: message.payload,
-            result,
-            message: result.reason ?? 'O evento requer confirmação manual.',
-          });
-          sendResponse({ ok: true, requiresConfirmation: true, result });
-          return;
-        }
-
-        setSync({
-          status: 'synced',
-          media: message.payload,
-          result,
-          message: result.action === 'PROGRESS_UPDATED'
-            ? `Progresso atualizado para ${result.newProgress}.`
-            : 'Lista já estava atualizada.',
-        });
-        sendResponse({ ok: true, result });
-      }
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : String(error);
-      setSync({ status: 'error', media: lastDetected ?? undefined, message: messageText });
-      sendResponse({ ok: false, error: messageText });
+const KEY = 'branilist.sync.v4';
+const DETECTED = 'branilist.detected';
+const ready = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+const engine = new SyncEngine({
+  load: async () => (await chrome.storage.local.get(KEY))[KEY] as SyncSnapshot | undefined,
+  save: async snapshot => { await chrome.storage.local.set({ [KEY]: snapshot }); },
+  resolve: resolveMedia,
+  write: syncProgress,
+});
+// Account changes and writes must not race. Persisted events belong to this account.
+let queue: Promise<unknown> = ready;
+chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendResponse) => {
+  const task = async () => {
+    await ready;
+    if (!message || typeof message.type !== 'string') throw new Error('Mensagem inválida.');
+    if (message.type === 'TRACKER_DETECTED' || message.type === 'SYNC_PROGRESS') {
+      const media = validateDetection(message.payload, sender);
+      await chrome.storage.local.set({ [DETECTED]: media });
+      if (message.type === 'TRACKER_DETECTED') return { ok: true };
+      return { ok: true, lastSync: await engine.run(media) };
     }
-  })();
-
+    if (!trustedPopup(sender)) throw new Error('Ação permitida somente no popup.');
+    if (message.type === 'AUTH_LOGIN') {
+      await login();
+      await chrome.storage.local.remove([KEY, DETECTED]);
+      return { ok: true };
+    }
+    if (message.type === 'AUTH_LOGOUT') {
+      await logout();
+      await chrome.storage.local.remove([KEY, DETECTED]);
+      return { ok: true };
+    }
+    if (message.type === 'SYNC_RETRY') return { ok: true, lastSync: await engine.run(undefined, message.retryId) };
+    if (message.type === 'AUTH_STATUS') {
+      const status = await authStatus();
+      let profile = null;
+      let profileError: string | undefined;
+      if (status.authenticated) {
+        try { profile = await getMe(); }
+        catch { profileError = 'Não foi possível consultar a conta. Verifique a conexão ou vincule novamente.'; }
+      }
+      return { ok: true, ...await authStatus(), profile, profileError,
+        oauth: { clientId: 'branilist-sync', extensionId: chrome.runtime.id, redirectUri: chrome.identity.getRedirectURL('oauth2') },
+        lastDetected: (await chrome.storage.local.get(DETECTED))[DETECTED] as DetectedMedia | undefined,
+        pending: (await engine.snapshot()).events.filter(event => ['resolved', 'error', 'confirmation_required'].includes(event.state.status)).map(event => event.state),
+        lastSync: (await engine.snapshot()).lastSync };
+    }
+    throw new Error('Ação desconhecida.');
+  };
+  const result = queue.then(task);
+  queue = result.catch(() => undefined);
+  void result.then(sendResponse, () => sendResponse({ ok: false, error: 'Não foi possível concluir a ação. Verifique a conexão e tente novamente.' }));
   return true;
 });

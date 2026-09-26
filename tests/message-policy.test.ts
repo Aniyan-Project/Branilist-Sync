@@ -1,0 +1,20 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+import { trustedPopup, validateDetection } from '../src/core/message-policy';
+const id = 'a'.repeat(32); const url = 'https://www.crunchyroll.com/watch/G123';
+const media = { providerId: 'crunchyroll', providerMediaId: 'G123', kind: 'ANIME', episode: 3, title: 'Example', canonicalUrl: url, externalIds: { ANILIST: '999' } };
+beforeEach(() => vi.stubGlobal('chrome', { runtime: { id, getURL: (path: string) => `chrome-extension://${id}/${path}` } }));
+it('accepts only its popup for privileged messages', () => {
+  expect(trustedPopup({ id, url, tab: {} as chrome.tabs.Tab })).toBe(false);
+  expect(trustedPopup({ id, url: `chrome-extension://${id}/src/ui/popup/popup.html` })).toBe(true);
+});
+it('validates source and strips untrusted external IDs', () => {
+  expect(validateDetection(media, { id, url, frameId: 0, tab: {} as chrome.tabs.Tab })).not.toHaveProperty('externalIds');
+});
+it.each([
+  { id, url: 'https://evil.test/watch/G123', frameId: 0, tab: {} },
+  { id, url, frameId: 1, tab: {} }, { id, url, frameId: 0 },
+  { id: 'other', url, frameId: 0, tab: {} },
+  { id, url: 'https://www.crunchyroll.com/watch/G456', frameId: 0, tab: {} },
+])('rejects forged or unrelated sender %o', sender => {
+  expect(() => validateDetection(media, sender as chrome.runtime.MessageSender)).toThrow();
+});

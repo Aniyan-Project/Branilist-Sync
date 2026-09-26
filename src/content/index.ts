@@ -26,10 +26,12 @@ function mountForCurrentPage(): void {
   const ctx = { url, document };
 
   void provider.detect(ctx).then((media) => {
-    if (media) void reportDetected(media);
+    if (media && location.href === url.href) void reportDetected(media).catch(() => undefined);
   });
 
-  cleanup = provider.observe?.(ctx, (media) => void reportProgress(media)) ?? null;
+  cleanup = provider.observe?.(ctx, (media) => {
+    if (location.href === url.href) void reportProgress(media).catch(() => undefined);
+  }) ?? null;
 }
 
 mountForCurrentPage();
