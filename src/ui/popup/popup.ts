@@ -416,7 +416,7 @@ async function incrementEntry(entry: LibraryEntry, button?: HTMLButtonElement) {
   if (total !== null && next > total) return;
   if (button) button.disabled = true;
   try {
-    const nextStatus: LibraryStatus = entry.status === 'PLANNING' ? 'CURRENT' : entry.status;
+    const nextStatus: LibraryStatus = settings.quickPlusStartsCurrent && entry.status === 'PLANNING' ? 'CURRENT' : entry.status;
     await updateEntry(entry, next, nextStatus);
     renderLibrary();
     if (selectedEntry?.mediaId === entry.mediaId) {
@@ -591,9 +591,15 @@ async function refreshSession() {
     ? `Client: ${response.oauth.clientId}\nID: ${response.oauth.extensionId}\nCallback: ${response.oauth.redirectUri}`
     : '';
 
+  settings = response.settings ?? settings;
+  history = response.history ?? [];
+  renderSettings();
+  renderHistory();
+
   const detected = (response.lastDetected ?? null) as DetectedMedia | null;
   const lastSync = (response.lastSync ?? null) as SyncState | null;
   renderCurrentMedia(detected);
+  renderCurrentFlow(lastSync);
   await hydrateCurrentMatch(detected, lastSync);
 
   pending = response.pending ?? [];
