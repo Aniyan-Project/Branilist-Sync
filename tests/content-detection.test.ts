@@ -254,3 +254,68 @@ it('rejects forged network metadata for a different watch ID', async () => {
     expect.objectContaining({ type: 'TRACKER_DETECTED' }),
   );
 });
+
+
+it('uses cached prefetched metadata for the episode selected by the live URL', async () => {
+  mocks.detect.mockResolvedValue(null);
+
+  const start = new URL('https://www.crunchyroll.com/pt-br/watch/GMKUXG2E0/episode-1');
+  vi.stubGlobal('location', start);
+
+  await import('../src/content/index');
+  await Promise.resolve();
+
+  const emit = (detail: Record<string, unknown>) => {
+    window.dispatchEvent(new CustomEvent('branilist-sync:crunchyroll-network-episode', {
+      detail: JSON.stringify(detail),
+    }));
+  };
+
+  emit({
+    episodeProviderId: 'GMKUXG2E0',
+    seasonProviderId: 'SEASON123',
+    seriesProviderId: 'G24H1N334',
+    seriesTitle: 'The Detective Is Already Dead',
+    episodeTitle: 'Episode 1',
+    episode: 1,
+  });
+  emit({
+    episodeProviderId: 'GPWUKD78W',
+    seasonProviderId: 'SEASON123',
+    seriesProviderId: 'G24H1N334',
+    seriesTitle: 'The Detective Is Already Dead',
+    episodeTitle: 'Episode 2',
+    episode: 2,
+  });
+  emit({
+    episodeProviderId: 'G8WUN0X72',
+    seasonProviderId: 'SEASON123',
+    seriesProviderId: 'G24H1N334',
+    seriesTitle: 'The Detective Is Already Dead',
+    episodeTitle: 'Episode 3',
+    episode: 3,
+  });
+  await Promise.resolve();
+
+  (location as unknown as URL).href = 'https://www.crunchyroll.com/pt-br/watch/GPWUKD78W/episode-2';
+  await vi.advanceTimersByTimeAsync(300);
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'TRACKER_DETECTED',
+    payload: expect.objectContaining({
+      providerEpisodeId: 'GPWUKD78W',
+      episode: 2,
+      episodeTitle: 'Episode 2',
+    }),
+  });
+
+  expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith({
+    type: 'TRACKER_DETECTED',
+    payload: expect.objectContaining({
+      providerEpisodeId: 'G8WUN0X72',
+      episode: 3,
+    }),
+  });
+});
