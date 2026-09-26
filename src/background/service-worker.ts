@@ -50,6 +50,51 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
   const task = async () => {
     await ready;
     if (!message || typeof message.type !== 'string') throw new Error('Mensagem inválida.');
+    if (message.type === 'PROVIDER_DIAGNOSTIC') {
+      const payload = message.payload;
+      const provider = providerById(payload.providerId);
+      const senderUrl = sender.url ? new URL(sender.url) : null;
+      const currentUrl = new URL(payload.canonicalUrl);
+      const safeTitle = typeof payload.playerTitleText === 'string'
+        ? payload.playerTitleText.trim().slice(0, 300)
+        : undefined;
+
+      if (
+        sender.id !== chrome.runtime.id ||
+        !sender.tab ||
+        sender.frameId !== 0 ||
+        !provider ||
+        !senderUrl ||
+        senderUrl.protocol !== 'https:' ||
+        !provider.hosts.includes(senderUrl.hostname) ||
+        currentUrl.protocol !== 'https:' ||
+        currentUrl.origin !== senderUrl.origin ||
+        !provider.hosts.includes(currentUrl.hostname) ||
+        currentUrl.pathname !== payload.pathname ||
+        typeof payload.active !== 'boolean' ||
+        typeof payload.hasVideo !== 'boolean' ||
+        typeof payload.hasPlayerRoot !== 'boolean' ||
+        typeof payload.hasTitleRoot !== 'boolean' ||
+        typeof payload.hasWatchId !== 'boolean'
+      ) throw new Error('Diagnóstico de provider inválido.');
+
+      const previous = (await chrome.storage.local.get(PROVIDER_DIAG))[PROVIDER_DIAG] as ProviderDiagnostics | undefined;
+      const next: ProviderDiagnostics = {
+        ...(previous?.providerId === payload.providerId ? previous : { providerId: payload.providerId }),
+        providerId: payload.providerId,
+        active: payload.active,
+        lastProbeAt: new Date().toISOString(),
+        lastCanonicalUrl: `${currentUrl.origin}${currentUrl.pathname}`,
+        lastPathname: payload.pathname.slice(0, 500),
+        hasVideo: payload.hasVideo,
+        hasPlayerRoot: payload.hasPlayerRoot,
+        hasTitleRoot: payload.hasTitleRoot,
+        hasWatchId: payload.hasWatchId,
+        playerTitleText: safeTitle,
+      };
+      await chrome.storage.local.set({ [PROVIDER_DIAG]: next });
+      return { ok: true };
+    }
     if (message.type === 'TRACKER_CLEARED') {
       const senderUrl = sender.url ? new URL(sender.url) : null;
       const currentUrl = new URL(message.payload.canonicalUrl);
