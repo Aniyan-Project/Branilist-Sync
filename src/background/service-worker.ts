@@ -424,12 +424,12 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (message.type === 'SETTINGS_SET') return { ok: true, settings: await saveSettings(message.payload) };
     if (message.type === 'AUTH_LOGIN') {
       await login();
-      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, NETFLIX_BRIDGE_DIAG, PROVIDER_DIAG, CURRENT_RESOLUTION]);
+      await chrome.storage.local.remove([KEY, SESSIONS, ...LEGACY_SESSION_KEYS]);
       return { ok: true };
     }
     if (message.type === 'AUTH_LOGOUT') {
       await logout();
-      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION, BRIDGE_DIAG, NETFLIX_BRIDGE_DIAG, PROVIDER_DIAG, CURRENT_RESOLUTION]);
+      await chrome.storage.local.remove([KEY, SESSIONS, ...LEGACY_SESSION_KEYS]);
       return { ok: true };
     }
     if (message.type === 'SYNC_RETRY') return { ok: true, lastSync: await engine.run(undefined, message.retryId) };
@@ -451,19 +451,37 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         try { profile = await getMe(); }
         catch { profileError = 'Não foi possível consultar a conta. Verifique a conexão ou vincule novamente.'; }
       }
+
+      const activeTabId = Number.isSafeInteger(message.activeTabId) && (message.activeTabId ?? -1) >= 0
+        ? message.activeTabId
+        : undefined;
+      const sessions = await loadTrackerSessions();
+      const activeSession = selectTrackerSession(sessions, activeTabId);
+      const sessionSummaries = Object.values(sessions)
+        .map(summarizeTrackerSession)
+        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+
       const snapshot = await engine.snapshot();
       const settings = await loadSettings();
-      return { ok: true, ...await authStatus(), profile, profileError, settings,
+      return {
+        ok: true,
+        ...status,
+        profile,
+        profileError,
+        settings,
         oauth: { clientId: 'branilist-sync', extensionId: chrome.runtime.id, redirectUri: chrome.identity.getRedirectURL('oauth2') },
-        lastDetected: (await chrome.storage.local.get(DETECTED))[DETECTED] as DetectedMedia | undefined,
-        episodeNavigation: (await chrome.storage.local.get(NAVIGATION))[NAVIGATION] as EpisodeNavigationState | undefined,
-        bridgeDiagnostics: (await chrome.storage.local.get(BRIDGE_DIAG))[BRIDGE_DIAG] as CrunchyrollBridgeDiagnostics | undefined,
-        netflixBridgeDiagnostics: (await chrome.storage.local.get(NETFLIX_BRIDGE_DIAG))[NETFLIX_BRIDGE_DIAG] as NetflixBridgeDiagnostics | undefined,
-        providerDiagnostics: (await chrome.storage.local.get(PROVIDER_DIAG))[PROVIDER_DIAG] as ProviderDiagnostics | undefined,
-        currentResolution: (await chrome.storage.local.get(CURRENT_RESOLUTION))[CURRENT_RESOLUTION] as CurrentResolution | undefined,
+        activeSessionKey: activeSession?.key,
+        sessions: sessionSummaries,
+        lastDetected: activeSession?.detected,
+        episodeNavigation: activeSession?.episodeNavigation,
+        bridgeDiagnostics: activeSession?.bridgeDiagnostics,
+        netflixBridgeDiagnostics: activeSession?.netflixBridgeDiagnostics,
+        providerDiagnostics: activeSession?.providerDiagnostics,
+        currentResolution: activeSession?.currentResolution,
         pending: snapshot.events.filter(event => ['resolved', 'error', 'confirmation_required'].includes(event.state.status)).map(event => event.state),
         history: snapshot.events.slice(-20).reverse().map(event => ({ ...event.state, occurredAt: event.occurredAt })),
-        lastSync: snapshot.lastSync };
+        lastSync: snapshot.lastSync,
+      };
     }
     throw new Error('Ação desconhecida.');
   };
@@ -472,3 +490,13 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
   void result.then(sendResponse, () => sendResponse({ ok: false, error: 'Não foi possível concluir a ação. Verifique a conexão e tente novamente.' }));
   return true;
 });
+
+if (chrome.tabs?.onRemoved?.addListener) {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    const cleanupTask = queue.then(async () => {
+      await ready;
+      await removeTrackerSessionsForTab(tabId);
+    });
+    queue = cleanupTask.catch(() => undefined);
+  });
+}
