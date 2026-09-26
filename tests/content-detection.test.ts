@@ -42,11 +42,7 @@ beforeEach(() => {
   mocks.observe.mockReset();
   mocks.toast.mockReset();
   mocks.observe.mockReturnValue(() => undefined);
-  history.replaceState({}, '', '/pt-br/watch/GMKUXG2E0/example');
-  Object.defineProperty(window, 'location', {
-    configurable: true,
-    value: new URL('https://www.crunchyroll.com/pt-br/watch/GMKUXG2E0/example'),
-  });
+  vi.stubGlobal('location', new URL('https://www.crunchyroll.com/pt-br/watch/GMKUXG2E0/example'));
   vi.stubGlobal('chrome', {
     runtime: {
       sendMessage: vi.fn().mockResolvedValue({
