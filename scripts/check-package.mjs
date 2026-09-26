@@ -21,12 +21,16 @@ const height = icon128.readUInt32BE(20);
 if (width !== 128 || height !== 128) throw new Error(`Invalid 128px icon dimensions: ${width}x${height}`);
 
 // MV3 content scripts are classic scripts: imports/exports must fail this check.
-for (const path of ['dist/assets/content.js', 'dist/assets/network-bridge.js']) {
+for (const path of ['dist/assets/content.js', 'dist/assets/netflix-content.js', 'dist/assets/network-bridge.js']) {
   new vm.Script(await readFile(path, 'utf8'));
 }
-const mainBridge = manifest.content_scripts.find(script => script.js?.includes('assets/network-bridge.js'));
-if (!mainBridge || mainBridge.world !== 'MAIN' || mainBridge.run_at !== 'document_start') {
-  throw new Error('Crunchyroll network bridge must run in MAIN at document_start');
+const mainBridges = manifest.content_scripts.filter(script => script.js?.includes('assets/network-bridge.js'));
+if (mainBridges.length < 2 || mainBridges.some(script => script.world !== 'MAIN' || script.run_at !== 'document_start')) {
+  throw new Error('Provider network bridges must run in MAIN at document_start');
+}
+const netflixScript = manifest.content_scripts.find(script => script.js?.includes('assets/netflix-content.js'));
+if (!netflixScript || netflixScript.run_at !== 'document_start') {
+  throw new Error('Netflix content script must run at document_start');
 }
 if (manifest.optional_host_permissions?.length) throw new Error('Unexpected optional hosts');
 console.log(`Validated Chrome package ${pkg.version}`);
