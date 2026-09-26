@@ -31,6 +31,8 @@ export interface NetflixBridgeDiagnostics {
   genreStatus?: number | string;
   genreCheckedAt?: string;
   genreIds?: number[];
+  genreLabels?: string[];
+  genreSource?: 'ids' | 'labels' | 'none';
   animeConfirmed?: boolean;
 }
 
