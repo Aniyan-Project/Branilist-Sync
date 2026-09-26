@@ -167,7 +167,9 @@ function seriesIdFromExactTitleLink(document: Document, seriesTitle: string): st
   for (const anchor of document.querySelectorAll<HTMLAnchorElement>('a[href*="/series/"]')) {
     if (anchor.textContent?.trim().replace(/\s+/g, ' ').toLocaleLowerCase() !== normalized) continue;
     try {
-      const id = crunchyrollSeriesId(new URL(anchor.href, document.URL));
+      const href = anchor.getAttribute('href');
+      if (!href) continue;
+      const id = crunchyrollSeriesId(new URL(href, 'https://www.crunchyroll.com'));
       if (id) ids.add(id);
     } catch { /* ignore malformed links */ }
   }
