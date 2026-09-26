@@ -13,7 +13,7 @@ const object = (value: unknown): Obj | null => value && typeof value === 'object
 const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null;
 const providerToken = (value: unknown): string | null => {
   const raw = text(value);
-  return raw && /^[A-Z0-9]{6,32}$/i.test(raw) ? raw : null;
+  return raw && /^[A-Z0-9]{4,32}$/i.test(raw) ? raw : null;
 };
 
 export function crunchyrollMediaId(url: URL): string | null {
