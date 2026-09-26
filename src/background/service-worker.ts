@@ -184,15 +184,19 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         !provider.hosts.includes(currentUrl.hostname) ||
         provider.matches(currentUrl)
       ) throw new Error('Limpeza de página inválida.');
-      const previous = (await chrome.storage.local.get(PROVIDER_DIAG))[PROVIDER_DIAG] as ProviderDiagnostics | undefined;
-      const providerDiagnostics: ProviderDiagnostics = {
-        ...(previous?.providerId === message.payload.providerId ? previous : { providerId: message.payload.providerId }),
-        providerId: message.payload.providerId,
-        active: false,
-        lastClearedAt: new Date().toISOString(),
-      };
-      await chrome.storage.local.set({ [PROVIDER_DIAG]: providerDiagnostics });
-      await chrome.storage.local.remove([DETECTED, NAVIGATION, CURRENT_RESOLUTION]);
+      await updateTrackerSession(sender, message.payload.providerId, session => {
+        const previous = session.providerDiagnostics;
+        const providerDiagnostics: ProviderDiagnostics = {
+          ...(previous?.providerId === message.payload.providerId ? previous : { providerId: message.payload.providerId }),
+          providerId: message.payload.providerId,
+          active: false,
+          lastClearedAt: new Date().toISOString(),
+        };
+        return {
+          ...clearSessionCurrentState(session),
+          providerDiagnostics,
+        };
+      });
       return { ok: true };
     }
     if (message.type === 'NETFLIX_WATCH_CHANGED') {
