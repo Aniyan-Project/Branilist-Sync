@@ -5,7 +5,7 @@ import type {
   ProvidersResponse,
   ResolveResult,
 } from './types';
-import { stableEventKey } from './tracking';
+import type { PendingEvent } from './sync-engine';
 
 const API_BASE = 'https://branilist.com/api/extension/v1';
 
@@ -45,7 +45,7 @@ async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Re
   const send = async (token: string) => {
     const headers = new Headers(init.headers);
     headers.set('authorization', `Bearer ${token}`);
-    return fetch(`${API_BASE}${path}`, { ...init, headers });
+    return fetch(`${API_BASE}${path}`, { ...init, headers, signal: AbortSignal.timeout(15000), redirect: 'error' });
   };
 
   const token = await accessToken();
@@ -94,10 +94,10 @@ export async function resolveMedia(media: DetectedMedia): Promise<ResolveResult>
   return jsonResponse<ResolveResult>(response, 'Resolução da mídia');
 }
 
-export async function syncProgress(media: DetectedMedia): Promise<ResolveResult> {
-  const occurredAt = new Date().toISOString();
+export async function syncProgress(event: PendingEvent): Promise<ResolveResult> {
+  const { media, occurredAt } = event;
   const payload = eventPayload(media, occurredAt);
-  const idempotencyKey = stableEventKey(media, occurredAt);
+  const idempotencyKey = `branilist-sync-v1-${event.id}`;
 
   const response = await authorizedFetch('/tracking/events', {
     method: 'POST',

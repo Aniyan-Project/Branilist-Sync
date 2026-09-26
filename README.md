@@ -4,7 +4,18 @@ Extensão oficial do **Branilist** para acompanhar automaticamente anime e mang�
 
 O Branilist Sync detecta a mídia e o progresso em sites compatíveis, pede ao backend para resolver a obra com segurança e só então envia uma atualização idempotente da lista.
 
-## v0.3.0 — Backend integration
+## v0.4.0 — Preparação para produção
+
+Eventos e retries persistem após reinício do worker. O popup permite revisar
+pendências e verificar novamente a correspondência sem forçar updates. O parser
+Crunchyroll recusa metadados incertos e preserva temporadas para revisão no backend.
+O pacote é validado para Manifest V3, com content script independente.
+
+Veja [release notes](RELEASE-v0.4.0.md) e o [guia de publicação](docs/CHROME-WEB-STORE.md).
+O ID da loja e o teste OAuth/playback real ainda estão pendentes; é possível obter
+o ID enviando o ZIP como rascunho antes de publicar.
+
+### Integração com o backend
 
 Implementado nesta versão:
 
@@ -47,10 +58,10 @@ match seguro?
 ## Desenvolvimento
 
 ```bash
-pnpm install
-pnpm test
-pnpm typecheck
-pnpm build
+npm ci
+npm test
+npm run typecheck
+npm run build
 ```
 
 O build copia `manifest.json` para `dist/`. Depois carregue `dist/` em:

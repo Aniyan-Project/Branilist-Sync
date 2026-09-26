@@ -1,7 +1,7 @@
+import { CLIENT_ID, callbackCode, validateRedirect } from './oauth-policy';
 const AUTH_BASE = 'https://branilist.com/oauth/authorize';
 const TOKEN_ENDPOINT = 'https://branilist.com/oauth/token';
 const REVOKE_ENDPOINT = 'https://branilist.com/oauth/revoke';
-const CLIENT_ID = 'branilist-sync';
 const STORAGE_KEY = 'branilist.auth';
 const EXPIRY_SKEW_MS = 30_000;
 
@@ -34,6 +34,8 @@ async function loadAuth(): Promise<StoredAuth | null> {
 }
 
 async function saveAuth(token: TokenResponse, previousRefreshToken?: string): Promise<void> {
+  if (!token.access_token || typeof token.access_token !== 'string' || !Number.isFinite(token.expires_in) || token.expires_in <= 0 ||
+    (token.refresh_token !== undefined && (typeof token.refresh_token !== 'string' || !token.refresh_token))) throw new Error('Resposta OAuth inválida.');
   const auth: StoredAuth = {
     accessToken: token.access_token,
     refreshToken: token.refresh_token ?? previousRefreshToken,
@@ -49,9 +51,12 @@ async function tokenRequest(body: URLSearchParams): Promise<TokenResponse> {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body,
+    signal: AbortSignal.timeout(15000),
+    redirect: 'error',
   });
 
   if (!response.ok) {
+    if (response.status === 400 || response.status === 401) await chrome.storage.local.remove(STORAGE_KEY);
     throw new Error(`Falha OAuth: ${response.status}`);
   }
 
@@ -63,6 +68,7 @@ export async function login(): Promise<void> {
   const challenge = await sha256(verifier);
   const state = base64Url(crypto.getRandomValues(new Uint8Array(24)));
   const redirectUri = chrome.identity.getRedirectURL('oauth2');
+  validateRedirect(redirectUri, chrome.runtime.id);
 
   const authUrl = new URL(AUTH_BASE);
   authUrl.searchParams.set('client_id', CLIENT_ID);
@@ -79,10 +85,7 @@ export async function login(): Promise<void> {
   });
   if (!result) throw new Error('OAuth cancelado');
 
-  const callback = new URL(result);
-  if (callback.searchParams.get('state') !== state) throw new Error('OAuth state inválido');
-  const code = callback.searchParams.get('code');
-  if (!code) throw new Error(callback.searchParams.get('error') ?? 'Código OAuth ausente');
+  const code = callbackCode(result, redirectUri, state);
 
   const token = await tokenRequest(
     new URLSearchParams({
@@ -121,7 +124,6 @@ export async function refreshAccessToken(force = false): Promise<string | null> 
     await saveAuth(token, auth.refreshToken);
     return token.access_token;
   } catch (error) {
-    await chrome.storage.local.remove(STORAGE_KEY);
     throw error;
   }
 }
@@ -133,6 +135,8 @@ async function revoke(raw?: string): Promise<void> {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ token: raw }),
+      signal: AbortSignal.timeout(10000),
+      redirect: 'error',
     });
   } catch {
     // Logout local deve continuar mesmo se a rede estiver indisponível.

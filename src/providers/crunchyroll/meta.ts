@@ -3,143 +3,76 @@ export interface CrunchyrollMetadata {
   seriesTitle: string;
   episode: number;
   episodeTitle?: string;
+  seasonTitle?: string;
 }
-
-type JsonObject = Record<string, unknown>;
-
-function asObject(value: unknown): JsonObject | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as JsonObject)
-    : null;
-}
-
-function asNonEmptyString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
+type Obj = Record<string, unknown>;
+const object = (value: unknown): Obj | null => value && typeof value === 'object' && !Array.isArray(value) ? value as Obj : null;
+const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null;
 export function crunchyrollMediaId(url: URL): string | null {
-  const match = url.pathname.match(/\/watch\/([^/?#]+)/i);
-  return match?.[1] ?? null;
+  if (url.protocol !== 'https:' || !['www.crunchyroll.com', 'crunchyroll.com'].includes(url.hostname) || url.port || url.username || url.password) return null;
+  return url.pathname.match(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?watch\/([A-Z0-9]+)(?:\/|$)/i)?.[1] ?? null;
 }
-
 export function parseEpisodeNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    return value;
-  }
-
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value : null;
   if (typeof value !== 'string') return null;
-
-  const normalized = value.trim();
-  if (!normalized) return null;
-
-  const direct = Number(normalized.replace(',', '.'));
-  if (Number.isFinite(direct) && direct > 0) return direct;
-
-  const match = normalized.match(/(?:episode|ep\.?|epis[oó]dio)\s*#?\s*(\d+(?:[.,]\d+)?)/i);
-  if (!match) return null;
-
-  const parsed = Number(match[1].replace(',', '.'));
+  const match = value.trim().match(/^(?:(?:episode|ep\.?|epis[oó]dio)\s*#?\s*)?(\d+(?:[.,]\d+)?)$/i);
+  const parsed = match ? Number(match[1].replace(',', '.')) : NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
-
-function parseJsonLdNode(node: unknown): Omit<CrunchyrollMetadata, 'providerMediaId'> | null {
-  const obj = asObject(node);
-  if (!obj) return null;
-
-  const graph = Array.isArray(obj['@graph']) ? obj['@graph'] : null;
-  if (graph) {
-    for (const child of graph) {
-      const parsed = parseJsonLdNode(child);
-      if (parsed) return parsed;
-    }
+function nodes(document: Document): Obj[] {
+  const result: Obj[] = [];
+  function visit(value: unknown) {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    const node = object(value);
+    if (!node) return;
+    result.push(node);
+    if (Array.isArray(node['@graph'])) visit(node['@graph']);
   }
-
-  const rawType = obj['@type'];
-  const types = Array.isArray(rawType) ? rawType : [rawType];
-  const isEpisode = types.some((type) =>
-    typeof type === 'string' && /TVEpisode|Episode/i.test(type),
-  );
-  if (!isEpisode) return null;
-
-  const episode = parseEpisodeNumber(obj.episodeNumber);
-  if (!episode) return null;
-
-  const series =
-    asObject(obj.partOfSeries) ??
-    asObject(obj.partOfSeason) ??
-    asObject(obj.isPartOf);
-
-  const seriesTitle =
-    asNonEmptyString(series?.name) ??
-    asNonEmptyString(series?.headline);
-
-  if (!seriesTitle) return null;
-
-  return {
-    seriesTitle,
-    episode,
-    episodeTitle: asNonEmptyString(obj.name) ?? undefined,
+  for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+    try { visit(JSON.parse(script.textContent ?? '')); } catch { /* Ignore malformed third-party data. */ }
+  }
+  return result;
+}
+export function parseCrunchyrollJsonLd(document: Document, url = new URL(document.URL)): Omit<CrunchyrollMetadata, 'providerMediaId'> | null {
+  const all = nodes(document);
+  const deref = (value: unknown): Obj | null => {
+    const obj = object(value);
+    const ref = typeof value === 'string' ? value : text(obj?.['@id']);
+    return all.find(node => ref && node['@id'] === ref && node !== obj) ?? obj;
   };
-}
-
-export function parseCrunchyrollJsonLd(document: Document): Omit<CrunchyrollMetadata, 'providerMediaId'> | null {
-  const scripts = document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]');
-
-  for (const script of scripts) {
-    if (!script.textContent?.trim()) continue;
-
-    try {
-      const json = JSON.parse(script.textContent) as unknown;
-      const nodes = Array.isArray(json) ? json : [json];
-
-      for (const node of nodes) {
-        const parsed = parseJsonLdNode(node);
-        if (parsed) return parsed;
-      }
-    } catch {
-      // JSON-LD de terceiros pode ser inválido; seguimos para as próximas fontes.
-    }
+  const episodes = all.filter(node => [node['@type']].flat().some(type => type === 'TVEpisode' || type === 'Episode'));
+  const candidates: Omit<CrunchyrollMetadata, 'providerMediaId'>[] = [];
+  for (const node of episodes) {
+    const identity = text(node.url) ?? text(node['@id']);
+    if (identity && !identity.startsWith('#')) {
+      try { if (crunchyrollMediaId(new URL(identity, url)) !== crunchyrollMediaId(url)) continue; } catch { continue; }
+    } else if (episodes.length !== 1) continue;
+    const episode = parseEpisodeNumber(node.episodeNumber);
+    const season = deref(node.partOfSeason);
+    const series = deref(node.partOfSeries) ?? deref(season?.partOfSeries);
+    const seriesTitle = text(series?.name) ?? text(series?.headline);
+    if (!episode || !Number.isSafeInteger(episode) || !seriesTitle || /^crunchyroll$/i.test(seriesTitle)) continue;
+    candidates.push({ seriesTitle, episode, episodeTitle: text(node.name) ?? undefined,
+      seasonTitle: season ? text(season.name) ?? `Season ${text(season.seasonNumber) ?? season.seasonNumber ?? 'unknown'}` : undefined });
   }
-
-  return null;
+  if (!candidates.length) return null;
+  const first = candidates[0];
+  return candidates.every(item => item.seriesTitle === first.seriesTitle && item.episode === first.episode && item.seasonTitle === first.seasonTitle) ? first : null;
 }
-
-function metaContent(document: Document, selectors: string[]): string | null {
-  for (const selector of selectors) {
-    const content = document.querySelector<HTMLMetaElement>(selector)?.content?.trim();
-    if (content) return content;
-  }
-  return null;
-}
-
 export function parseCrunchyrollMetadata(url: URL, document: Document): CrunchyrollMetadata | null {
   const providerMediaId = crunchyrollMediaId(url);
   if (!providerMediaId) return null;
-
-  const structured = parseCrunchyrollJsonLd(document);
-  if (structured) {
-    return { providerMediaId, ...structured };
+  // SPA transitions can leave the previous episode's metadata mounted briefly.
+  const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href;
+  const ogUrl = document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.content;
+  for (const identity of [canonical, ogUrl]) {
+    if (identity) {
+      try { if (crunchyrollMediaId(new URL(identity, url)) !== providerMediaId) return null; } catch { return null; }
+    }
   }
-
-  // Fallback conservador. Só sincroniza se conseguirmos título de série e episódio separadamente.
-  const seriesTitle = metaContent(document, [
-    'meta[property="og:site_name"]',
-    'meta[name="twitter:title"]',
-  ]);
-
-  const episodeText =
-    document.querySelector('[data-t="episode-number"]')?.textContent ??
-    document.querySelector('[class*="episode"]')?.textContent ??
-    '';
-
-  const episode = parseEpisodeNumber(episodeText);
-
-  if (!seriesTitle || !episode) return null;
-
-  return {
-    providerMediaId,
-    seriesTitle,
-    episode,
-    episodeTitle: metaContent(document, ['meta[property="og:title"]']) ?? undefined,
-  };
+  const structured = parseCrunchyrollJsonLd(document, url);
+  if (structured) return { providerMediaId, ...structured };
+  // No generic title/class fallback: site names, recommendations and season names
+  // are not evidence of the currently playing series.
+  return null;
 }

@@ -1,7 +1,7 @@
 import { ANIME_COMPLETION_PERCENT } from '../core/tracking';
 import { observeVideoProgress } from '../core/video-progress';
 import type { DetectedMedia, TrackerProvider } from '../core/types';
-import { parseCrunchyrollMetadata } from './crunchyroll/meta';
+import { crunchyrollMediaId, parseCrunchyrollMetadata } from './crunchyroll/meta';
 
 export const crunchyrollProvider: TrackerProvider = {
   id: 'crunchyroll',
@@ -10,7 +10,7 @@ export const crunchyrollProvider: TrackerProvider = {
   kind: 'ANIME',
 
   matches(url) {
-    return this.hosts.includes(url.hostname) && /\/watch\//.test(url.pathname);
+    return Boolean(crunchyrollMediaId(url));
   },
 
   async detect({ url, document }) {
@@ -24,31 +24,29 @@ export const crunchyrollProvider: TrackerProvider = {
       title: metadata.seriesTitle,
       episode: metadata.episode,
       episodeTitle: metadata.episodeTitle,
-      canonicalUrl: url.href,
+      seasonTitle: metadata.seasonTitle,
+      canonicalUrl: `${url.origin}${url.pathname}`,
     };
   },
 
   observe(ctx, emit) {
-    let current: DetectedMedia | null = null;
-
-    void this.detect(ctx).then((detected) => {
-      current = detected;
-    });
+    let stopped = false;
 
     const stopProgress = observeVideoProgress(ctx.document, {
       thresholdPercent: ANIME_COMPLETION_PERCENT,
-      onThreshold(progressPercent) {
-        if (!current?.episode) return;
-
-        emit({
-          ...current,
-          progressPercent,
-        });
+      async onThreshold(progressPercent) {
+        if (stopped || ctx.document.location.href !== ctx.url.href) return false;
+        const current = await thisProvider.detect(ctx);
+        if (stopped || ctx.document.location.href !== ctx.url.href || !current?.episode) return false;
+        emit({ ...current, progressPercent });
+        return true;
       },
     });
 
     return () => {
+      stopped = true;
       stopProgress();
     };
   },
 };
+const thisProvider = crunchyrollProvider;

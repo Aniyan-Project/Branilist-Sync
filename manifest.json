@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Branilist Sync",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Acompanhamento automático oficial do Branilist para anime e mangá.",
-  "permissions": ["storage", "identity"],
+  "permissions": [
+    "storage",
+    "identity"
+  ],
   "host_permissions": [
     "https://branilist.com/*",
     "https://www.crunchyroll.com/*",
     "https://crunchyroll.com/*"
   ],
-  "optional_host_permissions": ["https://*/*"],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"
@@ -24,7 +26,9 @@
         "https://www.crunchyroll.com/*",
         "https://crunchyroll.com/*"
       ],
-      "js": ["assets/content.js"],
+      "js": [
+        "assets/content.js"
+      ],
       "run_at": "document_idle"
     }
   ]

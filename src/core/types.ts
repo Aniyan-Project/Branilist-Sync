@@ -46,6 +46,7 @@ export interface ProvidersResponse {
 }
 
 export interface SyncState {
+  retryId?: string;
   status: 'idle' | 'detected' | 'ignored' | 'resolved' | 'confirmation_required' | 'synced' | 'error';
   message?: string;
   media?: DetectedMedia;
@@ -69,6 +70,7 @@ export interface TrackerProvider {
 }
 
 export type ExtensionMessage =
+  | { type: 'SYNC_RETRY'; retryId: string }
   | { type: 'TRACKER_DETECTED'; payload: DetectedMedia }
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
