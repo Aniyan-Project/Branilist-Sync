@@ -4,12 +4,13 @@ import { SyncEngine, type SyncSnapshot } from '../core/sync-engine';
 import { trustedPopup, validateDetection } from '../core/message-policy';
 import { loadSettings, saveSettings } from '../core/settings';
 import { crunchyrollLegacyMappingIds } from '../providers/crunchyroll/identity';
+import { netflixWatchId } from '../providers/netflix/identity';
 import type { CrunchyrollBridgeDiagnostics, CurrentResolution, DetectedMedia, EpisodeNavigationState, ExtensionMessage } from '../core/types';
 
 const KEY = 'branilist.sync.v4';
 const DETECTED = 'branilist.detected';
 const NAVIGATION = 'branilist.episode-navigation';
-const BRIDGE_DIAG = 'branilist.crunchyroll-bridge-diagnostics';
+const BRIDGE_DIAG = 'branilist.provider-bridge-diagnostics';
 const CURRENT_RESOLUTION = 'branilist.current-resolution';
 const ready = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 const engine = new SyncEngine({
@@ -28,6 +29,20 @@ function trustedMappingResult(result: Awaited<ReturnType<typeof resolveMedia>>):
     Number.isSafeInteger(result.mediaId) &&
     (result.mediaId ?? 0) > 0 &&
     result.confidence === 1;
+}
+
+function providerFromHost(hostname: string): 'crunchyroll' | 'netflix' | undefined {
+  if (['www.crunchyroll.com', 'crunchyroll.com'].includes(hostname)) return 'crunchyroll';
+  if (['www.netflix.com', 'netflix.com'].includes(hostname)) return 'netflix';
+  return undefined;
+}
+
+function currentEpisodeId(providerId: string, url: URL): string | undefined {
+  if (providerId === 'crunchyroll') {
+    return url.pathname.match(/\/watch\/([A-Z0-9]{4,32})(?:\/|$)/i)?.[1];
+  }
+  if (providerId === 'netflix') return netflixWatchId(url);
+  return undefined;
 }
 
 async function resolveWithLegacyMigration(media: DetectedMedia) {
@@ -51,22 +66,25 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (message.type === 'TRACKER_CLEARED') {
       const senderUrl = sender.url ? new URL(sender.url) : null;
       const currentUrl = new URL(message.payload.canonicalUrl);
+      const senderProvider = senderUrl ? providerFromHost(senderUrl.hostname) : undefined;
+      const currentProvider = providerFromHost(currentUrl.hostname);
       if (
-        message.payload.providerId !== 'crunchyroll' ||
         !senderUrl ||
-        !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname) ||
+        senderProvider !== message.payload.providerId ||
+        currentProvider !== message.payload.providerId ||
         currentUrl.origin !== senderUrl.origin ||
-        !['www.crunchyroll.com', 'crunchyroll.com'].includes(currentUrl.hostname) ||
-        /\/watch\/[A-Z0-9]{4,32}(?:\/|$)/i.test(currentUrl.pathname)
+        currentEpisodeId(message.payload.providerId, currentUrl)
       ) throw new Error('Limpeza de página inválida.');
       await chrome.storage.local.remove([DETECTED, NAVIGATION, CURRENT_RESOLUTION]);
       return { ok: true };
     }
     if (message.type === 'BRIDGE_DIAGNOSTIC') {
       const senderUrl = sender.url ? new URL(sender.url) : null;
-      if (!senderUrl || !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname)) throw new Error('Diagnóstico inválido.');
+      const senderProvider = senderUrl ? providerFromHost(senderUrl.hostname) : undefined;
+      const declaredProvider = message.payload.providerId ?? senderProvider;
+      if (!senderProvider || declaredProvider !== senderProvider) throw new Error('Diagnóstico inválido.');
       const previous = ((await chrome.storage.local.get(BRIDGE_DIAG))[BRIDGE_DIAG] ?? {}) as CrunchyrollBridgeDiagnostics;
-      const next = { ...previous, ...message.payload, active: true } as CrunchyrollBridgeDiagnostics;
+      const next = { ...previous, ...message.payload, providerId: senderProvider, active: true } as CrunchyrollBridgeDiagnostics;
       await chrome.storage.local.set({ [BRIDGE_DIAG]: next });
       return { ok: true };
     }
@@ -74,13 +92,16 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       const payload = message.payload as EpisodeNavigationState;
       const senderUrl = sender.url ? new URL(sender.url) : null;
       const currentUrl = new URL(payload.canonicalUrl);
+      const senderProvider = senderUrl ? providerFromHost(senderUrl.hostname) : undefined;
+      const currentProvider = providerFromHost(currentUrl.hostname);
+      const episodeId = currentEpisodeId(payload.providerId, currentUrl);
       if (
-        payload.providerId !== 'crunchyroll' ||
-        !/^[A-Z0-9]{4,32}$/i.test(payload.episodeProviderId) ||
         !senderUrl ||
-        !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname) ||
+        senderProvider !== payload.providerId ||
+        currentProvider !== payload.providerId ||
         currentUrl.origin !== senderUrl.origin ||
-        !currentUrl.pathname.includes('/watch/' + payload.episodeProviderId)
+        !episodeId ||
+        episodeId !== payload.episodeProviderId
       ) throw new Error('Mudança de episódio inválida.');
       await chrome.storage.local.set({ [NAVIGATION]: payload });
       return { ok: true, settings: await loadSettings() };
