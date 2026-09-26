@@ -15,13 +15,14 @@ export function validateDetection(value: unknown, sender: chrome.runtime.Message
   const media = value as DetectedMedia;
   const source = new URL(sender.url ?? '');
   const canonical = new URL(media.canonicalUrl);
-  const episodeId = crunchyrollMediaId(source);
+  const episodeId = crunchyrollMediaId(canonical);
   const declaredEpisodeId = providerToken(media.providerEpisodeId);
   const seasonId = providerToken(media.providerSeasonId);
   const seriesId = providerToken(media.providerSeriesId);
   const providerMediaId = providerToken(media.providerMediaId);
+  const allowedHost = ['www.crunchyroll.com', 'crunchyroll.com'].includes(source.hostname);
 
-  if (!episodeId || crunchyrollMediaId(canonical) !== episodeId || source.origin !== canonical.origin ||
+  if (!allowedHost || !episodeId || source.origin !== canonical.origin ||
     media.providerId !== 'crunchyroll' || media.kind !== 'ANIME' ||
     (declaredEpisodeId && declaredEpisodeId !== episodeId) ||
     !providerMediaId || providerMediaId !== (seasonId ?? episodeId) ||
@@ -40,7 +41,7 @@ export function validateDetection(value: unknown, sender: chrome.runtime.Message
     title: media.title.trim(),
     episode: media.episode,
     progressPercent: media.progressPercent,
-    canonicalUrl: `${source.origin}${source.pathname}`,
+    canonicalUrl: `${canonical.origin}${canonical.pathname}`,
     seasonTitle: typeof media.seasonTitle === 'string' ? media.seasonTitle.slice(0, 300) : undefined,
     episodeTitle: typeof media.episodeTitle === 'string' ? media.episodeTitle.slice(0, 300) : undefined,
   };
