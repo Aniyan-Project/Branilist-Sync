@@ -687,8 +687,15 @@ async function refreshSession() {
   const diagnosticLines: Array<string | null> = providerDiagnostics
     ? [
         `Provider: ${providerName} — ${providerDiagnostics.active ? 'ATIVO' : 'inativo'}`,
+        providerDiagnostics.lastProbeAt ? `Último probe: ${formatTime(providerDiagnostics.lastProbeAt)}` : null,
         providerDiagnostics.lastDetectedAt ? `Última detecção: ${formatTime(providerDiagnostics.lastDetectedAt)}` : null,
         providerDiagnostics.lastCanonicalUrl ? `Última página: ${providerDiagnostics.lastCanonicalUrl}` : null,
+        providerDiagnostics.lastPathname ? `Path: ${providerDiagnostics.lastPathname}` : null,
+        typeof providerDiagnostics.hasVideo === 'boolean' ? `Vídeo encontrado: ${providerDiagnostics.hasVideo ? 'SIM' : 'não'}` : null,
+        typeof providerDiagnostics.hasPlayerRoot === 'boolean' ? `Player root: ${providerDiagnostics.hasPlayerRoot ? 'SIM' : 'não'}` : null,
+        typeof providerDiagnostics.hasTitleRoot === 'boolean' ? `Bloco de título: ${providerDiagnostics.hasTitleRoot ? 'SIM' : 'não'}` : null,
+        typeof providerDiagnostics.hasWatchId === 'boolean' ? `Watch ID: ${providerDiagnostics.hasWatchId ? 'SIM' : 'não'}` : null,
+        providerDiagnostics.playerTitleText ? `Texto do player: ${providerDiagnostics.playerTitleText}` : null,
         providerDiagnostics.lastEpisodeId
           ? `Último episódio: ${providerDiagnostics.lastEpisodeId}${providerDiagnostics.lastEpisodeNumber ? ` (E${providerDiagnostics.lastEpisodeNumber})` : ''}`
           : null,
