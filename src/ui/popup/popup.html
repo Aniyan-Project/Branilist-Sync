@@ -91,6 +91,11 @@
     .feedback { min-height:17px; color:#8dd8ad; font-size:11px; margin-top:8px; }
     .feedback.error { color:#ff9d9d; }
     .pending-card { margin-top:9px; }
+    .candidate-list { display:grid; gap:7px; margin-top:9px; }
+    .candidate { display:grid; grid-template-columns:38px minmax(0,1fr); gap:8px; align-items:center; padding:7px; border:1px solid #34415a; border-radius:9px; background:#171f30; }
+    .candidate img { width:38px; height:54px; object-fit:cover; border-radius:6px; background:#0d1522; }
+    .candidate strong { display:block; color:#e8f1ff; font-size:11px; line-height:1.25; }
+    .candidate small { display:block; margin-top:3px; color:#8296b2; font-size:9px; }
     details { margin-top:10px; color:#7185a0; font-size:10px; }
     #oauth { overflow-wrap:anywhere; white-space:pre-line; }
     [hidden] { display:none !important; }
@@ -225,6 +230,7 @@
           <strong id="sync-title"></strong>
           <div id="sync-message"></div>
           <div id="sync-candidates" class="muted"></div>
+          <div id="pending-candidates" class="candidate-list"></div>
         </div>
         <button id="retry" class="btn primary" type="button" hidden>Tentar novamente</button>
       </div>
