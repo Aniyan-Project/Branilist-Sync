@@ -193,3 +193,64 @@ it('emits immediate episode navigation state and toast when the live watch ID ch
     expect.any(Number),
   );
 });
+
+
+it('uses Crunchyroll network metadata as the primary episode signal', async () => {
+  mocks.detect.mockResolvedValue(null);
+
+  vi.stubGlobal('location', new URL('https://www.crunchyroll.com/pt-br/watch/G8WUN0X72/episode-3'));
+  await import('../src/content/index');
+  await Promise.resolve();
+
+  window.dispatchEvent(new CustomEvent('branilist-sync:crunchyroll-network-episode', {
+    detail: {
+      episodeProviderId: 'G8WUN0X72',
+      seasonProviderId: 'SEASON123',
+      seriesProviderId: 'G24H1N334',
+      seriesTitle: 'The Detective Is Already Dead',
+      seasonTitle: 'Portuguese Dub',
+      episodeTitle: 'É de Qualidade Yui-nyan',
+      episode: 3,
+    },
+  }));
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'TRACKER_DETECTED',
+    payload: {
+      providerId: 'crunchyroll',
+      providerMediaId: 'SEASON123',
+      providerEpisodeId: 'G8WUN0X72',
+      providerSeasonId: 'SEASON123',
+      providerSeriesId: 'G24H1N334',
+      kind: 'ANIME',
+      title: 'The Detective Is Already Dead',
+      episode: 3,
+      episodeTitle: 'É de Qualidade Yui-nyan',
+      seasonTitle: 'Portuguese Dub',
+      canonicalUrl: 'https://www.crunchyroll.com/pt-br/watch/G8WUN0X72/episode-3',
+    },
+  });
+});
+
+it('rejects forged network metadata for a different watch ID', async () => {
+  mocks.detect.mockResolvedValue(null);
+
+  vi.stubGlobal('location', new URL('https://www.crunchyroll.com/pt-br/watch/G8WUN0X72/episode-3'));
+  await import('../src/content/index');
+  await Promise.resolve();
+
+  window.dispatchEvent(new CustomEvent('branilist-sync:crunchyroll-network-episode', {
+    detail: {
+      episodeProviderId: 'GOTHER123',
+      seriesTitle: 'Wrong episode',
+      episode: 99,
+    },
+  }));
+  await Promise.resolve();
+
+  expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'TRACKER_DETECTED' }),
+  );
+});
