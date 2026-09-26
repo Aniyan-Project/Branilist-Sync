@@ -3,10 +3,11 @@ import { getLibrary, getMe, getMediaDetail, resolveMedia, saveUserMapping, syncP
 import { SyncEngine, type SyncSnapshot } from '../core/sync-engine';
 import { trustedPopup, validateDetection } from '../core/message-policy';
 import { loadSettings, saveSettings } from '../core/settings';
-import type { DetectedMedia, ExtensionMessage } from '../core/types';
+import type { DetectedMedia, EpisodeNavigationState, ExtensionMessage } from '../core/types';
 
 const KEY = 'branilist.sync.v4';
 const DETECTED = 'branilist.detected';
+const NAVIGATION = 'branilist.episode-navigation';
 const ready = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 const engine = new SyncEngine({
   load: async () => (await chrome.storage.local.get(KEY))[KEY] as SyncSnapshot | undefined,
@@ -20,9 +21,16 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
   const task = async () => {
     await ready;
     if (!message || typeof message.type !== 'string') throw new Error('Mensagem inválida.');
+    if (message.type === 'EPISODE_NAVIGATED') {
+      const payload = message.payload as EpisodeNavigationState;
+      if (payload.providerId !== 'crunchyroll' || !/^[A-Z0-9]{4,32}$/i.test(payload.episodeProviderId)) throw new Error('Mudança de episódio inválida.');
+      await chrome.storage.local.set({ [NAVIGATION]: payload });
+      return { ok: true, settings: await loadSettings() };
+    }
     if (message.type === 'TRACKER_DETECTED' || message.type === 'SYNC_PROGRESS') {
       const media = validateDetection(message.payload, sender);
       await chrome.storage.local.set({ [DETECTED]: media });
+      await chrome.storage.local.remove([NAVIGATION]);
       if (message.type === 'TRACKER_DETECTED') {
         const [status, settings] = await Promise.all([authStatus(), loadSettings()]);
         if (!status.authenticated) return { ok: true, authenticated: false, settings };
@@ -49,7 +57,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (message.type === 'SETTINGS_SET') return { ok: true, settings: await saveSettings(message.payload) };
     if (message.type === 'AUTH_LOGIN') {
       await login();
-      await chrome.storage.local.remove([KEY, DETECTED]);
+      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION]);
       return { ok: true };
     }
     if (message.type === 'AUTH_LOGOUT') {
@@ -81,6 +89,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       return { ok: true, ...await authStatus(), profile, profileError, settings,
         oauth: { clientId: 'branilist-sync', extensionId: chrome.runtime.id, redirectUri: chrome.identity.getRedirectURL('oauth2') },
         lastDetected: (await chrome.storage.local.get(DETECTED))[DETECTED] as DetectedMedia | undefined,
+        episodeNavigation: (await chrome.storage.local.get(NAVIGATION))[NAVIGATION] as EpisodeNavigationState | undefined,
         pending: snapshot.events.filter(event => ['resolved', 'error', 'confirmation_required'].includes(event.state.status)).map(event => event.state),
         history: snapshot.events.slice(-20).reverse().map(event => ({ ...event.state, occurredAt: event.occurredAt })),
         lastSync: snapshot.lastSync };
