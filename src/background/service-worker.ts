@@ -3,6 +3,7 @@ import { getLibrary, getMe, getMediaDetail, resolveMedia, saveUserMapping, syncP
 import { SyncEngine, type SyncSnapshot } from '../core/sync-engine';
 import { trustedPopup, validateDetection } from '../core/message-policy';
 import { loadSettings, saveSettings } from '../core/settings';
+import { providerById } from '../core/provider-registry';
 import { crunchyrollLegacyMappingIds } from '../providers/crunchyroll/identity';
 import type { CrunchyrollBridgeDiagnostics, CurrentResolution, DetectedMedia, EpisodeNavigationState, ExtensionMessage } from '../core/types';
 
@@ -51,13 +52,14 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (message.type === 'TRACKER_CLEARED') {
       const senderUrl = sender.url ? new URL(sender.url) : null;
       const currentUrl = new URL(message.payload.canonicalUrl);
+      const provider = providerById(message.payload.providerId);
       if (
-        message.payload.providerId !== 'crunchyroll' ||
+        !provider ||
         !senderUrl ||
-        !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname) ||
+        !provider.hosts.includes(senderUrl.hostname) ||
         currentUrl.origin !== senderUrl.origin ||
-        !['www.crunchyroll.com', 'crunchyroll.com'].includes(currentUrl.hostname) ||
-        /\/watch\/[A-Z0-9]{4,32}(?:\/|$)/i.test(currentUrl.pathname)
+        !provider.hosts.includes(currentUrl.hostname) ||
+        provider.matches(currentUrl)
       ) throw new Error('Limpeza de página inválida.');
       await chrome.storage.local.remove([DETECTED, NAVIGATION, CURRENT_RESOLUTION]);
       return { ok: true };
