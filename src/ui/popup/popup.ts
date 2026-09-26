@@ -419,6 +419,11 @@ async function incrementEntry(entry: LibraryEntry, button?: HTMLButtonElement) {
     const nextStatus: LibraryStatus = settings.quickPlusStartsCurrent && entry.status === 'PLANNING' ? 'CURRENT' : entry.status;
     await updateEntry(entry, next, nextStatus);
     renderLibrary();
+    if (currentEntry?.mediaId === entry.mediaId) {
+      renderCurrentEntry(entry);
+      currentFeedback.textContent = 'Progresso atualizado.';
+      currentFeedback.classList.remove('error');
+    }
     if (selectedEntry?.mediaId === entry.mediaId) {
       detailStatus.value = entry.status;
       detailProgress.value = String(entry.progress);
@@ -621,6 +626,27 @@ async function busy(button: HTMLButtonElement, action: () => Promise<void>) {
   button.disabled = true;
   try { await action(); } catch (error) { showError(error); }
   finally { button.disabled = false; }
+}
+
+async function persistSettings() {
+  const duration = Number(settingToastDuration.value);
+  const payload: ExtensionSettings = {
+    autoSync: settingAutoSync.checked,
+    showToast: settingShowToast.checked,
+    toastDurationSeconds: Number.isFinite(duration) ? duration : 30,
+    quickPlusStartsCurrent: settingQuickStart.checked,
+  };
+  settingsFeedback.textContent = 'Salvando…';
+  settingsFeedback.classList.remove('error');
+  const response = await chrome.runtime.sendMessage({ type: 'SETTINGS_SET', payload });
+  if (!response?.ok) {
+    settingsFeedback.textContent = response?.error ?? 'Não foi possível salvar as configurações.';
+    settingsFeedback.classList.add('error');
+    return;
+  }
+  settings = response.settings ?? payload;
+  renderSettings();
+  settingsFeedback.textContent = 'Configurações salvas.';
 }
 
 document.querySelectorAll<HTMLButtonElement>('.tab').forEach(button => {
