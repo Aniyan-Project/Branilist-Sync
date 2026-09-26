@@ -21,6 +21,17 @@ export interface EpisodeNavigationState {
   detectedAt: string;
 }
 
+export interface ProviderDiagnostics {
+  providerId: string;
+  active: boolean;
+  lastDetectedAt?: string;
+  lastCanonicalUrl?: string;
+  lastEpisodeId?: string;
+  lastEpisodeNumber?: number;
+  lastProgressPercent?: number;
+  lastClearedAt?: string;
+}
+
 export interface ExtensionSettings {
   autoSync: boolean;
   showToast: boolean;
