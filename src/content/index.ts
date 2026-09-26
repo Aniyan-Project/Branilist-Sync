@@ -14,6 +14,8 @@ let mountedProviderId: string | undefined;
 let remountQueued = false;
 let currentCrunchyrollEpisodeId = crunchyrollMediaId(new URL(location.href)) ?? undefined;
 let lastClearedPage: string | undefined;
+let lastSuccessfulDetectionKey = '';
+let detectionReportInFlight: { key: string; promise: Promise<void> } | null = null;
 const networkEpisodeCache = new Map<string, CrunchyrollNetworkEpisode>();
 
 function livePageUrl(): URL {
@@ -79,7 +81,25 @@ function activeProviderForPage(url = livePageUrl()) {
 
 function pageKey(providerId?: string): string {
   const url = livePageUrl();
-  return `${providerId ?? activeProviderForPage(url)?.id ?? 'none'}||${url.href}||${metadataFingerprint()}`;
+  const resolvedProviderId = providerId ?? activeProviderForPage(url)?.id ?? 'none';
+
+  // Netflix mutates player controls/title nodes constantly during playback.
+  // The watch path is the stable episode identity; visual DOM changes must not remount tracking.
+  if (resolvedProviderId === 'netflix') {
+    return `${resolvedProviderId}||${url.origin}${url.pathname}`;
+  }
+
+  return `${resolvedProviderId}||${url.href}||${metadataFingerprint()}`;
+}
+
+function detectionKey(media: DetectedMedia): string {
+  return [
+    media.providerId,
+    media.providerEpisodeId ?? '',
+    media.providerMediaId ?? '',
+    media.episode ?? '',
+    media.chapter ?? '',
+  ].join('|');
 }
 
 let lastProviderDiagnosticKey = '';
@@ -115,8 +135,29 @@ async function reportProviderDiagnostic(providerId: string, active: boolean): Pr
 }
 
 async function reportDetected(media: DetectedMedia): Promise<void> {
-  const response = await chrome.runtime.sendMessage({ type: 'TRACKER_DETECTED', payload: media });
-  if (response?.ok && response.settings?.showToast !== false) showDetectionToast(media, response);
+  const key = detectionKey(media);
+  if (key === lastSuccessfulDetectionKey) return;
+
+  if (detectionReportInFlight?.key === key) {
+    await detectionReportInFlight.promise;
+    return;
+  }
+
+  const promise = (async () => {
+    const response = await chrome.runtime.sendMessage({ type: 'TRACKER_DETECTED', payload: media });
+    if (!response?.ok) return;
+
+    lastSuccessfulDetectionKey = key;
+    if (response.settings?.showToast !== false) showDetectionToast(media, response);
+  })();
+
+  detectionReportInFlight = { key, promise };
+
+  try {
+    await promise;
+  } finally {
+    if (detectionReportInFlight?.key === key) detectionReportInFlight = null;
+  }
 }
 
 async function reportProgress(media: DetectedMedia): Promise<void> {
@@ -132,6 +173,8 @@ async function clearTrackerForCurrentPage(providerId?: string): Promise<void> {
   if (lastClearedPage === clearKey) return;
 
   lastClearedPage = clearKey;
+  lastSuccessfulDetectionKey = '';
+  detectionReportInFlight = null;
   cleanup?.();
   cleanup = null;
   mountedKey = '';
@@ -222,10 +265,8 @@ window.addEventListener('branilist-sync:netflix-network-episode', event => {
   const provider = activeProviderForPage();
   if (provider?.id !== 'netflix') return;
 
-  void provider.detect({ url: livePageUrl(), document })
-    .then(media => media ? reportDetected(media) : undefined)
-    .catch(() => undefined);
-
+  // A single forced mount performs the immediate detection. Do not also report
+  // directly here, otherwise the bridge event and mount race each other.
   mountForCurrentPage(true);
 });
 
