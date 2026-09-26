@@ -28,6 +28,10 @@ export interface NetflixBridgeDiagnostics {
   lastEpisodeNumber?: number;
   lastSeasonNumber?: number;
   lastSeriesId?: string;
+  genreStatus?: number | string;
+  genreCheckedAt?: string;
+  genreIds?: number[];
+  animeConfirmed?: boolean;
 }
 
 export interface EpisodeNavigationState {
