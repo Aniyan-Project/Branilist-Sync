@@ -89,8 +89,7 @@ export function extractNetflixGenreLabelsFromTitleDocument(document: Document): 
   const selectors = [
     '.more-details-cell.cell-genres .more-details-item',
     '.more-details-item.item-genres',
-    '[data-uia*="genre" i]',
-    '[class*="genre" i]',
+    '[data-uia*="genre" i]:not([data-uia*="container" i])',
   ];
 
   const values: string[] = [];
