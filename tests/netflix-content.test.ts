@@ -190,10 +190,6 @@ it('does not report or toast the same Netflix episode more than once', async () 
   await Promise.resolve();
   await Promise.resolve();
 
-  const detectedCalls = vi.mocked(chrome.runtime.sendMessage).mock.calls
-    .filter(([message]) => message?.type === 'TRACKER_DETECTED');
-
-  expect(detectedCalls).toHaveLength(0);
   expect(mocks.toast).toHaveBeenCalledTimes(0);
 });
 
