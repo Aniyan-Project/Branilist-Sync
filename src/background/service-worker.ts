@@ -23,7 +23,14 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (!message || typeof message.type !== 'string') throw new Error('Mensagem inválida.');
     if (message.type === 'EPISODE_NAVIGATED') {
       const payload = message.payload as EpisodeNavigationState;
-      if (payload.providerId !== 'crunchyroll' || !/^[A-Z0-9]{4,32}$/i.test(payload.episodeProviderId)) throw new Error('Mudança de episódio inválida.');
+      const senderUrl = sender.url ? new URL(sender.url) : null;
+      if (
+        payload.providerId !== 'crunchyroll' ||
+        !/^[A-Z0-9]{4,32}$/i.test(payload.episodeProviderId) ||
+        !senderUrl ||
+        !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname) ||
+        !senderUrl.pathname.includes('/watch/' + payload.episodeProviderId)
+      ) throw new Error('Mudança de episódio inválida.');
       await chrome.storage.local.set({ [NAVIGATION]: payload });
       return { ok: true, settings: await loadSettings() };
     }
@@ -62,7 +69,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     }
     if (message.type === 'AUTH_LOGOUT') {
       await logout();
-      await chrome.storage.local.remove([KEY, DETECTED]);
+      await chrome.storage.local.remove([KEY, DETECTED, NAVIGATION]);
       return { ok: true };
     }
     if (message.type === 'SYNC_RETRY') return { ok: true, lastSync: await engine.run(undefined, message.retryId) };
