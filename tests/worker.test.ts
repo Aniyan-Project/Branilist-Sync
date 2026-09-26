@@ -203,3 +203,37 @@ it('clears the current detection when Crunchyroll SPA leaves a watch page', asyn
   expect(storage['branilist.detected']).toBeUndefined();
   expect(storage['branilist.episode-navigation']).toBeUndefined();
 });
+
+
+it('persists the latest current resolution separately from progress sync state', async () => {
+  const detected = await send({ type: 'TRACKER_DETECTED', payload: media });
+  expect(detected.ok).toBe(true);
+
+  const status = await send({ type: 'AUTH_STATUS' }, popup);
+  expect(status.currentResolution).toMatchObject({
+    media: expect.objectContaining({
+      providerId: 'crunchyroll',
+      episode: 3,
+    }),
+    result: expect.objectContaining({
+      matched: true,
+      mediaId: 42,
+    }),
+  });
+  expect(status.currentResolution.resolvedAt).toBeTruthy();
+});
+
+it('clears the current resolution when leaving a watch page', async () => {
+  await send({ type: 'TRACKER_DETECTED', payload: media });
+  expect(storage['branilist.current-resolution']).toBeTruthy();
+
+  const cleared = await send({
+    type: 'TRACKER_CLEARED',
+    payload: {
+      providerId: 'crunchyroll',
+      canonicalUrl: 'https://www.crunchyroll.com/series/G24H1N334/example',
+    },
+  });
+  expect(cleared.ok).toBe(true);
+  expect(storage['branilist.current-resolution']).toBeUndefined();
+});
