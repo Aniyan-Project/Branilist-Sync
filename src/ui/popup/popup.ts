@@ -1,5 +1,6 @@
 import type {
   BranilistProfile,
+  CrunchyrollBridgeDiagnostics,
   DetectedMedia,
   EpisodeNavigationState,
   ExtensionSettings,
@@ -19,6 +20,7 @@ const authButton = $('#auth') as HTMLButtonElement;
 const openButton = $('#open') as HTMLButtonElement;
 const refreshButton = $('#refresh') as HTMLButtonElement;
 const oauthEl = $('#oauth');
+const bridgeDiagnosticsEl = $('#bridge-diagnostics');
 
 const currentMediaEl = $('#current-media');
 const currentMediaTitleEl = $('#current-media-title');
@@ -656,6 +658,19 @@ async function refreshSession() {
   oauthEl.textContent = response.oauth
     ? `Client: ${response.oauth.clientId}\nID: ${response.oauth.extensionId}\nCallback: ${response.oauth.redirectUri}`
     : '';
+
+  const bridge = (response.bridgeDiagnostics ?? null) as CrunchyrollBridgeDiagnostics | null;
+  bridgeDiagnosticsEl.textContent = bridge
+    ? [
+        `Bridge: ${bridge.active ? 'ATIVO' : 'inativo'}`,
+        `JSONs observados: ${bridge.jsonResponsesSeen ?? 0}`,
+        bridge.startedAt ? `Iniciado: ${formatTime(bridge.startedAt)}` : null,
+        bridge.lastRequestAt ? `Última resposta: ${formatTime(bridge.lastRequestAt)}` : null,
+        bridge.lastRequestUrl ? `Última URL: ${bridge.lastRequestUrl}` : null,
+        bridge.lastEpisodeId ? `Último episódio extraído: ${bridge.lastEpisodeId}${bridge.lastEpisodeNumber ? ` (E${bridge.lastEpisodeNumber})` : ''}` : 'Último episódio extraído: nenhum',
+        bridge.lastEpisodeAt ? `Extraído em: ${formatTime(bridge.lastEpisodeAt)}` : null,
+      ].filter(Boolean).join('\n')
+    : 'Bridge: sem sinal recebido ainda.';
 
   settings = response.settings ?? settings;
   history = response.history ?? [];
