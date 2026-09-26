@@ -4,7 +4,14 @@ Extensão oficial do **Branilist** para acompanhar automaticamente anime e mang�
 
 O Branilist Sync detecta a mídia e o progresso em sites compatíveis, pede ao backend para resolver a obra com segurança e só então envia uma atualização idempotente da lista.
 
-## v0.4.0 — Preparação para produção
+## v0.4.1 — Identidade da Chrome Web Store
+
+O item de rascunho da loja já foi criado: `kimfpnbfjfmpkjpcmfnjeoefakhcoclh`.
+A chave pública está no manifest e mantém o mesmo ID ao carregar `dist/` localmente.
+Após o build, a CI valida a correspondência com `npm run check:store -- kimfpnbfjfmpkjpcmfnjeoefakhcoclh`.
+Veja [notas da v0.4.1](RELEASE-v0.4.1.md).
+
+### Preparação para produção da v0.4
 
 Eventos e retries persistem após reinício do worker. O popup permite revisar
 pendências e verificar novamente a correspondência sem forçar updates. O parser
@@ -12,8 +19,7 @@ Crunchyroll recusa metadados incertos e preserva temporadas para revisão no bac
 O pacote é validado para Manifest V3, com content script independente.
 
 Veja [release notes](RELEASE-v0.4.0.md) e o [guia de publicação](docs/CHROME-WEB-STORE.md).
-O ID da loja e o teste OAuth/playback real ainda estão pendentes; é possível obter
-o ID enviando o ZIP como rascunho antes de publicar.
+O provisionamento do client no backend e o teste OAuth/playback real ainda estão pendentes.
 
 ### Integração com o backend
 
