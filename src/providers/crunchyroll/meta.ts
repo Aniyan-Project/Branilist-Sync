@@ -197,6 +197,6 @@ export function parseCrunchyrollMetadata(url: URL, document: Document): Crunchyr
     episodeProviderId,
     seasonProviderId,
     seriesProviderId,
-    providerMediaId: seasonProviderId ?? episodeProviderId,
+    providerMediaId: seasonProviderId ?? seriesProviderId ?? episodeProviderId,
   };
 }
