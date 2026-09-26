@@ -75,3 +75,42 @@ export function classifyNetflixGenres(genreIds: number[]): NetflixGenreClassific
     isAnime: ids.some(id => NETFLIX_ANIME_GENRE_IDS.has(id)),
   };
 }
+
+
+const normalizeLabel = (value: string): string =>
+  value.replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+export function extractNetflixGenreLabelsFromTitleDocument(document: Document): string[] {
+  const selectors = [
+    '.more-details-cell.cell-genres .more-details-item',
+    '.more-details-item.item-genres',
+    '[data-uia*="genre" i]',
+    '[class*="genre" i]',
+  ];
+
+  const values: string[] = [];
+  const seen = new Set<string>();
+
+  for (const selector of selectors) {
+    for (const element of document.querySelectorAll(selector)) {
+      const label = normalizeLabel(element.textContent ?? '');
+      if (!label || label.length > 200 || seen.has(label)) continue;
+      seen.add(label);
+      values.push(label);
+    }
+  }
+
+  return values.slice(0, 50);
+}
+
+export function classifyNetflixGenreLabels(labels: string[]): boolean {
+  return labels.some(label => {
+    const normalized = label.normalize('NFKC').toLowerCase();
+    return /\banime\b/.test(normalized);
+  });
+}
