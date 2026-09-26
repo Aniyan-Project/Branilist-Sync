@@ -162,6 +162,92 @@ function setDetailFeedback(message = '', error = false) {
   detailFeedback.classList.toggle('error', error);
 }
 
+function formatTime(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(profile?.localeCode ?? 'pt-BR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).format(date);
+}
+
+function renderSettings() {
+  settingAutoSync.checked = settings.autoSync;
+  settingShowToast.checked = settings.showToast;
+  settingToastDuration.value = String(settings.toastDurationSeconds);
+  settingQuickStart.checked = settings.quickPlusStartsCurrent;
+  settingToastDuration.disabled = !settings.showToast;
+}
+
+function renderHistory() {
+  historyList.replaceChildren();
+  historyEmpty.hidden = history.length > 0;
+  for (const item of history) {
+    const row = document.createElement('div');
+    row.className = 'history-item';
+    const head = document.createElement('div');
+    head.className = 'history-head';
+    const title = document.createElement('strong');
+    title.textContent = item.media?.title ?? 'Sincronização Branilist';
+    const time = document.createElement('span');
+    time.className = 'history-time';
+    time.textContent = formatTime(item.occurredAt ?? item.updatedAt);
+    head.append(title, time);
+    const status = document.createElement('div');
+    status.className = 'history-status';
+    const label = item.status === 'synced' ? 'Sincronizado'
+      : item.status === 'error' ? 'Erro'
+      : item.status === 'confirmation_required' ? 'Revisão necessária'
+      : item.status === 'ignored' ? 'Ignorado'
+      : item.status === 'resolved' ? 'Correspondência encontrada'
+      : 'Detectado';
+    const progress = item.result?.newProgress ? ' • progresso ' + item.result.newProgress : '';
+    status.textContent = label + progress + (item.message ? ' • ' + item.message : '');
+    row.append(head, status);
+    historyList.append(row);
+  }
+}
+
+function renderCurrentFlow(lastSync?: SyncState | null) {
+  currentFlow.replaceChildren();
+  if (!lastSync) return;
+  const steps = [
+    { label: 'Detectado', done: Boolean(lastSync.media) },
+    { label: 'Correspondência', done: Boolean(lastSync.result?.matched && !lastSync.result?.requiresConfirmation) },
+    { label: 'Sincronizado', done: lastSync.status === 'synced' },
+  ];
+  for (const step of steps) {
+    const el = document.createElement('span');
+    const warn = lastSync.status === 'confirmation_required' && step.label === 'Correspondência';
+    el.className = 'sync-step' + (step.done ? ' done' : warn ? ' warn' : '');
+    el.textContent = step.label;
+    currentFlow.append(el);
+  }
+  const time = document.createElement('span');
+  time.className = 'sync-step';
+  time.textContent = formatTime(lastSync.updatedAt);
+  currentFlow.append(time);
+}
+
+function renderCurrentEntry(entry: LibraryEntry | null) {
+  currentEntry = entry;
+  currentList.hidden = !entry;
+  const fallback = document.querySelector<HTMLElement>('#current-actions-fallback');
+  if (fallback) fallback.hidden = Boolean(entry);
+  if (!entry) {
+    currentProgress.textContent = 'Ainda não foi possível carregar sua entrada da lista.';
+    return;
+  }
+  const total = totalFor(entry);
+  currentProgress.textContent = total
+    ? entry.progress + ' / ' + total + ' • ' + statusLabels[entry.status]
+    : entry.progress + ' • ' + statusLabels[entry.status];
+  currentStatus.value = entry.status;
+  currentScore.value = entry.score ? String(entry.score) : '';
+  currentPlus.textContent = entry.media.type === 'ANIME' ? '+1 episódio' : '+1 capítulo';
+  currentPlus.disabled = total !== null && entry.progress >= total;
+}
+
 function activateTab(name: string) {
   document.querySelectorAll<HTMLElement>('.tab').forEach(tab => {
     tab.classList.toggle('active', tab.dataset.tab === name);
