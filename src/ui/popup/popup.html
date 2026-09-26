@@ -5,18 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Branilist Sync</title>
     <style>
-      body { font: 14px system-ui, sans-serif; width: 300px; margin: 0; padding: 18px; }
-      h1 { font-size: 18px; margin: 0 0 8px; }
-      p { line-height: 1.45; opacity: .8; }
-      button { width: 100%; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
-      #status { margin: 12px 0; }
+      body { font: 14px system-ui, sans-serif; width: 330px; margin: 0; padding: 18px; color: #111; }
+      h1 { font-size: 18px; margin: 0 0 6px; }
+      p { line-height: 1.45; opacity: .78; margin: 6px 0; }
+      .card { border: 1px solid #ddd; border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+      .muted { opacity: .65; font-size: 12px; }
+      .warning { border-color: #d9a400; background: #fff9df; }
+      .success { border-color: #79b886; background: #f1fff4; }
+      .error { border-color: #c85d5d; background: #fff3f3; }
+      button { width: 100%; padding: 10px 12px; border-radius: 8px; cursor: pointer; margin-top: 8px; }
+      a { color: inherit; }
+      #media, #sync { display: none; }
     </style>
   </head>
   <body>
     <h1>Branilist Sync</h1>
-    <p>Acompanhamento automático de episódios e capítulos.</p>
-    <div id="status">Verificando conta…</div>
+    <p>Acompanhamento automático seguro de episódios e capítulos.</p>
+
+    <div id="account" class="card">Verificando conta…</div>
+
+    <div id="media" class="card">
+      <strong id="media-title"></strong>
+      <div id="media-detail" class="muted"></div>
+    </div>
+
+    <div id="sync" class="card">
+      <strong id="sync-title"></strong>
+      <div id="sync-message"></div>
+      <div id="sync-candidates" class="muted"></div>
+    </div>
+
     <button id="auth">Vincular conta</button>
+    <button id="open" type="button">Abrir Branilist</button>
+
     <script type="module" src="./popup.ts"></script>
   </body>
 </html>

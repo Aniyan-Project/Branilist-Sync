@@ -11,6 +11,46 @@ export interface DetectedMedia {
   seasonTitle?: string;
   progressPercent?: number;
   canonicalUrl: string;
+  externalIds?: Partial<Record<'ANILIST' | 'MAL', string>>;
+}
+
+export interface ResolveResult {
+  matched: boolean;
+  mediaId?: number;
+  action: string;
+  previousProgress: number;
+  newProgress: number;
+  confidence: number;
+  requiresConfirmation: boolean;
+  reason?: string;
+  candidates?: number[];
+  duplicate?: boolean;
+}
+
+export interface BranilistProfile {
+  id: number;
+  username: string;
+  displayName: string;
+  scopes: string[];
+}
+
+export interface ProviderInfo {
+  id: string;
+  mediaType: MediaKind;
+  hosts: string[];
+}
+
+export interface ProvidersResponse {
+  items: ProviderInfo[];
+  animeCompletionPercent: number;
+}
+
+export interface SyncState {
+  status: 'idle' | 'detected' | 'ignored' | 'resolved' | 'confirmation_required' | 'synced' | 'error';
+  message?: string;
+  media?: DetectedMedia;
+  result?: ResolveResult;
+  updatedAt: string;
 }
 
 export interface TrackerContext {

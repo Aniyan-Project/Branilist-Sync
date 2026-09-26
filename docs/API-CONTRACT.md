@@ -1,41 +1,46 @@
 # Branilist Extension API contract
 
 ## OAuth client
-Criar um OAuth Public Client específico para a extensão, sem client_secret e com PKCE S256 obrigatório.
 
-Redirect URI cadastrada deve aceitar o padrão retornado por `chrome.identity.getRedirectURL('oauth2')` para o ID publicado da extensão.
+A extensão usa o OAuth Public Client oficial:
 
-Scopes mínimos sugeridos:
-- `profile`
-- `list:read`
-- `list:write`
+- `client_id=branilist-sync`;
+- sem `client_secret`;
+- Authorization Code + PKCE S256 obrigatório;
+- redirect URI exata retornada por `chrome.identity.getRedirectURL('oauth2')`;
+- scopes `profile list:read list:write`.
 
-## POST /api/extension/v1/tracking/events
+Access tokens expiram em 1 hora. Refresh tokens expiram em 30 dias e são rotativos. A extensão persiste o novo par a cada refresh e revoga os tokens ao desvincular a conta.
 
-Recebe eventos detectados pelos providers. O backend é responsável por resolver a mídia do Branilist e aplicar regras de atualização.
+## Endpoints
 
-Payload:
+| Método | Rota | Uso |
+| --- | --- | --- |
+| GET | `/api/extension/v1/me` | conta vinculada |
+| GET | `/api/extension/v1/providers` | providers/hosts/thresholds |
+| POST | `/api/extension/v1/resolve` | matching somente leitura |
+| POST | `/api/extension/v1/tracking/events` | atualização idempotente |
 
-```json
-{
-  "provider": "crunchyroll",
-  "providerMediaId": "optional-external-id",
-  "mediaType": "ANIME",
-  "title": "Example",
-  "episode": 3,
-  "chapter": null,
-  "progressPercent": 92,
-  "sourceUrl": "https://...",
-  "occurredAt": "2026-09-25T21:30:00-03:00"
-}
-```
+## Matching seguro
 
-Resposta sugerida:
+A extensão chama `/resolve` antes de qualquer escrita. Ambiguidade, numbering incompatível ou mapping não verificado retornam `requiresConfirmation: true`.
+
+Nesse caso a extensão não chama `/tracking/events` e não altera a lista.
+
+O backend pode retornar `candidates`, mas esta versão ainda não possui endpoint para criar mappings globais a partir da extensão.
+
+## Tracking
+
+Anime só é enviado após pelo menos 90% do episódio. Mangá usa capítulo inteiro.
+
+Cada escrita envia `Idempotency-Key`. Retries internos reutilizam a mesma chave e o mesmo payload.
+
+Resposta típica:
 
 ```json
 {
   "matched": true,
-  "mediaId": "uuid",
+  "mediaId": 123,
   "action": "PROGRESS_UPDATED",
   "previousProgress": 2,
   "newProgress": 3,
@@ -44,10 +49,4 @@ Resposta sugerida:
 }
 ```
 
-## Matching
-Preferência:
-1. mapeamento explícito `(provider, provider_media_id) -> media_id`;
-2. alias de URL/provider mantido pelo catálogo;
-3. matching por IDs externos presentes na página;
-4. título normalizado somente como fallback;
-5. se ambíguo, nunca atualizar automaticamente: retornar `requiresConfirmation: true`.
+Tracking nunca reduz progresso nem conclui automaticamente uma obra.
