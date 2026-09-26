@@ -27,7 +27,92 @@ export function netflixWatchId(url: URL): string | null {
     url.password
   ) return null;
 
-  return url.pathname.match(/^\/watch\/(\d{4,20})(?:\/|$)/)?.[1] ?? null;
+  return url.pathname.match(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?watch\/(\d{4,20})(?:\/|$)/i)?.[1] ?? null;
+}
+
+export interface NetflixPlayerProbe {
+  hasVideo: boolean;
+  hasPlayerRoot: boolean;
+  hasTitleRoot: boolean;
+  active: boolean;
+  playerTitleText?: string;
+}
+
+export function netflixPlayerProbe(document: Document): NetflixPlayerProbe {
+  const video = document.querySelector('video');
+  const playerRoot = document.querySelector(
+    '[data-uia="watch-video"], [data-uia="video-player"], [data-uia="player"], .watch-video, .watch-video--player-view',
+  );
+  const titleRoot = document.querySelector(
+    '[data-uia="video-title"], [data-uia="player-title"], .video-title',
+  );
+  const playerTitleText = text(titleRoot?.textContent) ?? undefined;
+
+  const hasVideo = Boolean(video);
+  const hasPlayerRoot = Boolean(playerRoot);
+  const hasTitleRoot = Boolean(titleRoot);
+
+  return {
+    hasVideo,
+    hasPlayerRoot,
+    hasTitleRoot,
+    active: hasVideo && (hasPlayerRoot || hasTitleRoot),
+    playerTitleText,
+  };
+}
+
+function watchIdFromCandidate(value: unknown, base: URL): string | null {
+  const raw = text(value);
+  if (!raw) return null;
+  try {
+    return netflixWatchId(new URL(raw, base));
+  } catch {
+    return null;
+  }
+}
+
+export function netflixWatchIdFromDocument(url: URL, document: Document): string | null {
+  const direct = netflixWatchId(url);
+  if (direct) return direct;
+
+  for (const candidate of [
+    document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href,
+    document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.content,
+  ]) {
+    const id = watchIdFromCandidate(candidate, url);
+    if (id) return id;
+  }
+
+  const scopedRoots = [
+    document.querySelector('[data-uia="video-title"]'),
+    document.querySelector('[data-uia="player-title"]'),
+    document.querySelector('[data-uia="watch-video"]'),
+    document.querySelector('[data-uia="video-player"]'),
+    document.querySelector('.watch-video'),
+  ].filter((value): value is Element => Boolean(value));
+
+  for (const root of scopedRoots) {
+    for (const anchor of root.querySelectorAll<HTMLAnchorElement>('a[href*="/watch/"]')) {
+      const id = watchIdFromCandidate(anchor.href, url);
+      if (id) return id;
+    }
+    for (const element of [root, ...root.querySelectorAll<HTMLElement>('[data-videoid],[data-video-id]')]) {
+      for (const attr of ['data-videoid', 'data-video-id']) {
+        const raw = element.getAttribute(attr);
+        if (raw && /^\d{4,20}$/.test(raw)) return raw;
+      }
+    }
+  }
+
+  const video = document.querySelector<HTMLVideoElement>('video');
+  if (video) {
+    for (const attr of ['data-videoid', 'data-video-id']) {
+      const raw = video.getAttribute(attr);
+      if (raw && /^\d{4,20}$/.test(raw)) return raw;
+    }
+  }
+
+  return null;
 }
 
 export function netflixSeriesIdentity(title: string): string {
@@ -86,7 +171,7 @@ function titleFromRoot(root: Element, values: string[]): string | null {
 }
 
 export function parseNetflixMetadata(url: URL, document: Document): NetflixMetadata | null {
-  const episodeProviderId = netflixWatchId(url);
+  const episodeProviderId = netflixWatchIdFromDocument(url, document);
   if (!episodeProviderId) return null;
 
   const roots = [
