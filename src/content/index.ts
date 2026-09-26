@@ -1,4 +1,4 @@
-import { providerForUrl } from '../core/provider-registry';
+import { providerForHost, providerForUrl } from '../core/provider-registry';
 import { crunchyrollMediaId } from '../providers/crunchyroll/meta';
 import type { CrunchyrollBridgeDiagnostics, DetectedMedia } from '../core/types';
 import type { CrunchyrollNetworkEpisode } from '../providers/crunchyroll/network';
@@ -7,9 +7,10 @@ import { showDetectionToast, showEpisodeChangeToast } from './toast';
 
 let cleanup: (() => void) | null = null;
 let mountedKey = '';
+let mountedProviderId: string | undefined;
 let remountQueued = false;
-let currentEpisodeId = crunchyrollMediaId(new URL(location.href)) ?? undefined;
-let lastClearedUrl: string | undefined;
+let currentCrunchyrollEpisodeId = crunchyrollMediaId(new URL(location.href)) ?? undefined;
+let lastClearedPage: string | undefined;
 const networkEpisodeCache = new Map<string, CrunchyrollNetworkEpisode>();
 
 function livePageUrl(): URL {
@@ -23,6 +24,13 @@ function metadataFingerprint(): string {
   const ogUrl = document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.content?.trim();
   if (canonical) parts.push('canonical=' + canonical);
   if (ogUrl) parts.push('og=' + ogUrl);
+
+  const playerTitle = document
+    .querySelector<HTMLElement>('[data-uia="video-title"], [data-uia="player-title"], .video-title')
+    ?.textContent
+    ?.replace(/\s+/g, ' ')
+    .trim();
+  if (playerTitle) parts.push('player=' + playerTitle.slice(0, 600));
 
   for (const script of document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]')) {
     const text = script.textContent?.trim();
@@ -56,8 +64,9 @@ function metadataFingerprint(): string {
   return parts.join('||');
 }
 
-function pageKey(): string {
-  return livePageUrl().href + '||' + metadataFingerprint();
+function pageKey(providerId?: string): string {
+  const url = livePageUrl();
+  return `${providerId ?? providerForUrl(url)?.id ?? 'none'}||${url.href}||${metadataFingerprint()}`;
 }
 
 async function reportDetected(media: DetectedMedia): Promise<void> {
@@ -69,25 +78,31 @@ async function reportProgress(media: DetectedMedia): Promise<void> {
   await chrome.runtime.sendMessage({ type: 'SYNC_PROGRESS', payload: media });
 }
 
+async function clearTrackerForCurrentPage(providerId?: string): Promise<void> {
+  if (!providerId) return;
 
-async function clearTrackerForCurrentPage(): Promise<void> {
   const url = livePageUrl();
   const canonicalUrl = `${url.origin}${url.pathname}`;
-  if (lastClearedUrl === canonicalUrl) return;
-  lastClearedUrl = canonicalUrl;
-  currentEpisodeId = undefined;
+  const clearKey = `${providerId}|${canonicalUrl}`;
+  if (lastClearedPage === clearKey) return;
+
+  lastClearedPage = clearKey;
   cleanup?.();
   cleanup = null;
   mountedKey = '';
+  mountedProviderId = undefined;
+  if (providerId === 'crunchyroll') currentCrunchyrollEpisodeId = undefined;
 
   await chrome.runtime.sendMessage({
     type: 'TRACKER_CLEARED',
-    payload: { providerId: 'crunchyroll', canonicalUrl },
+    payload: { providerId, canonicalUrl },
   }).catch(() => undefined);
 }
 
-
-function networkEpisodeToMedia(episode: CrunchyrollNetworkEpisode, expectedEpisodeId = crunchyrollMediaId(livePageUrl()) ?? undefined): DetectedMedia | null {
+function networkEpisodeToMedia(
+  episode: CrunchyrollNetworkEpisode,
+  expectedEpisodeId = crunchyrollMediaId(livePageUrl()) ?? undefined,
+): DetectedMedia | null {
   const url = livePageUrl();
   const liveEpisodeId = expectedEpisodeId;
   const token = (value: unknown): string | undefined =>
@@ -115,7 +130,7 @@ function networkEpisodeToMedia(episode: CrunchyrollNetworkEpisode, expectedEpiso
   return {
     providerId: 'crunchyroll',
     providerMediaId: crunchyrollSeasonIdentity(seriesProviderId, seasonSlug, seasonProviderId, episodeProviderId),
-    providerEpisodeId: episodeProviderId,
+    providerEpisodeId,
     providerSeasonId: seasonProviderId,
     providerSeasonSlug: seasonSlug,
     providerSeriesId: seriesProviderId,
@@ -146,8 +161,9 @@ async function activateCachedEpisode(episodeId: string, previousEpisodeId?: stri
   const media = networkEpisodeToMedia(cached, episodeId);
   if (!media) return false;
 
-  currentEpisodeId = episodeId;
+  currentCrunchyrollEpisodeId = episodeId;
   mountedKey = '';
+  mountedProviderId = 'crunchyroll';
 
   if (previousEpisodeId && previousEpisodeId !== episodeId) {
     try {
@@ -165,7 +181,7 @@ async function activateCachedEpisode(episodeId: string, previousEpisodeId?: stri
         showEpisodeChangeToast(previousEpisodeId, episodeId, response.settings?.toastDurationSeconds ?? 12);
       }
     } catch {
-      // The cached metadata can still be reported even if navigation telemetry fails.
+      // Cached metadata can still be reported even if navigation telemetry fails.
     }
   }
 
@@ -190,23 +206,23 @@ window.addEventListener('branilist-sync:crunchyroll-network-episode', event => {
   const liveEpisodeId = crunchyrollMediaId(livePageUrl()) ?? undefined;
   if (!liveEpisodeId || liveEpisodeId !== detail.episodeProviderId) return;
 
-  const previousEpisodeId = currentEpisodeId;
+  const previousEpisodeId = currentCrunchyrollEpisodeId;
   void activateCachedEpisode(liveEpisodeId, previousEpisodeId).catch(() => undefined);
 });
 
 function mountForCurrentPage(force = false): void {
   const url = livePageUrl();
-  if (!crunchyrollMediaId(url)) return;
+  const provider = providerForUrl(url);
+  if (!provider) return;
 
-  const key = pageKey();
+  lastClearedPage = undefined;
+  const key = pageKey(provider.id);
   if (!force && key === mountedKey) return;
 
   cleanup?.();
   cleanup = null;
   mountedKey = key;
-
-  const provider = providerForUrl(url);
-  if (!provider) return;
+  mountedProviderId = provider.id;
 
   const ctx = { url, document };
   let stopped = false;
@@ -215,11 +231,16 @@ function mountForCurrentPage(force = false): void {
   let attempts = 0;
   const maxAttempts = 80;
 
-  const stillCurrent = () => !stopped && pageKey() === key;
+  const stillCurrent = () =>
+    !stopped &&
+    providerForUrl(livePageUrl())?.id === provider.id &&
+    pageKey(provider.id) === key;
 
   const stopProgress = provider.observe?.(ctx, (media) => {
     if (stillCurrent()) void reportProgress(media).catch(() => undefined);
   }) ?? null;
+
+  let timer: number | null = null;
 
   const stopDetectionTimer = () => {
     if (timer !== null) {
@@ -250,7 +271,7 @@ function mountForCurrentPage(force = false): void {
     }
   };
 
-  let timer: number | null = window.setInterval(() => {
+  timer = window.setInterval(() => {
     void tryDetect();
   }, 500);
 
@@ -263,20 +284,15 @@ function mountForCurrentPage(force = false): void {
   };
 }
 
-async function detectEpisodeNavigation(): Promise<void> {
+async function detectCrunchyrollEpisodeNavigation(): Promise<void> {
   const url = livePageUrl();
+  if (providerForUrl(url)?.id !== 'crunchyroll') return;
+
   const nextEpisodeId = crunchyrollMediaId(url) ?? undefined;
+  if (!nextEpisodeId || nextEpisodeId === currentCrunchyrollEpisodeId) return;
 
-  if (!nextEpisodeId) {
-    await clearTrackerForCurrentPage();
-    return;
-  }
-
-  lastClearedUrl = undefined;
-  if (nextEpisodeId === currentEpisodeId) return;
-
-  const previousEpisodeId = currentEpisodeId;
-  currentEpisodeId = nextEpisodeId;
+  const previousEpisodeId = currentCrunchyrollEpisodeId;
+  currentCrunchyrollEpisodeId = nextEpisodeId;
   mountedKey = '';
 
   if (await activateCachedEpisode(nextEpisodeId, previousEpisodeId)) return;
@@ -302,7 +318,21 @@ async function detectEpisodeNavigation(): Promise<void> {
   } catch {
     // A navigation hint must never block the safe parser from retrying.
   }
+}
 
+async function reconcileCurrentPage(): Promise<void> {
+  const url = livePageUrl();
+  const provider = providerForUrl(url);
+
+  if (!provider) {
+    const hostProvider = providerForHost(url);
+    await clearTrackerForCurrentPage(mountedProviderId ?? hostProvider?.id);
+    return;
+  }
+
+  lastClearedPage = undefined;
+  if (provider.id === 'crunchyroll') await detectCrunchyrollEpisodeNavigation();
+  mountForCurrentPage();
 }
 
 function queueRemount(): void {
@@ -310,7 +340,7 @@ function queueRemount(): void {
   remountQueued = true;
   window.setTimeout(() => {
     remountQueued = false;
-    mountForCurrentPage();
+    void reconcileCurrentPage();
   }, 0);
 }
 
@@ -323,12 +353,10 @@ mutationObserver.observe(document.documentElement, {
   attributeFilter: ['href', 'content'],
 });
 
-if (crunchyrollMediaId(livePageUrl())) mountForCurrentPage();
-else void clearTrackerForCurrentPage();
+void reconcileCurrentPage();
 
 const navigationObserver = window.setInterval(() => {
-  void detectEpisodeNavigation();
-  mountForCurrentPage();
+  void reconcileCurrentPage();
 }, 250);
 
 window.addEventListener(
