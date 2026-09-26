@@ -7,7 +7,7 @@ let mountedHref = '';
 
 async function reportDetected(media: DetectedMedia): Promise<void> {
   const response = await chrome.runtime.sendMessage({ type: 'TRACKER_DETECTED', payload: media });
-  if (response?.ok) showDetectionToast(media, response);
+  if (response?.ok && response.settings?.showToast !== false) showDetectionToast(media, response);
 }
 
 async function reportProgress(media: DetectedMedia): Promise<void> {
