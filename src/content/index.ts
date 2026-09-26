@@ -8,6 +8,7 @@ let cleanup: (() => void) | null = null;
 let mountedKey = '';
 let remountQueued = false;
 let currentEpisodeId = crunchyrollMediaId(new URL(location.href)) ?? undefined;
+const networkEpisodeCache = new Map<string, CrunchyrollNetworkEpisode>();
 
 function livePageUrl(): URL {
   return new URL(location.href);
@@ -67,9 +68,9 @@ async function reportProgress(media: DetectedMedia): Promise<void> {
 }
 
 
-function networkEpisodeToMedia(episode: CrunchyrollNetworkEpisode): DetectedMedia | null {
+function networkEpisodeToMedia(episode: CrunchyrollNetworkEpisode, expectedEpisodeId = crunchyrollMediaId(livePageUrl()) ?? undefined): DetectedMedia | null {
   const url = livePageUrl();
-  const liveEpisodeId = crunchyrollMediaId(url);
+  const liveEpisodeId = expectedEpisodeId;
   const token = (value: unknown): string | undefined =>
     typeof value === 'string' && /^[A-Z0-9]{4,32}$/i.test(value) ? value : undefined;
   const optionalText = (value: unknown): string | undefined =>
@@ -117,6 +118,41 @@ window.addEventListener('branilist-sync:crunchyroll-network-diagnostic', event =
   }
 });
 
+async function activateCachedEpisode(episodeId: string, previousEpisodeId?: string): Promise<boolean> {
+  const cached = networkEpisodeCache.get(episodeId);
+  if (!cached) return false;
+
+  const media = networkEpisodeToMedia(cached, episodeId);
+  if (!media) return false;
+
+  currentEpisodeId = episodeId;
+  mountedKey = '';
+
+  if (previousEpisodeId && previousEpisodeId !== episodeId) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'EPISODE_NAVIGATED',
+        payload: {
+          providerId: 'crunchyroll',
+          previousEpisodeId,
+          episodeProviderId: episodeId,
+          canonicalUrl: media.canonicalUrl,
+          detectedAt: new Date().toISOString(),
+        },
+      });
+      if (response?.ok && response.settings?.showToast !== false) {
+        showEpisodeChangeToast(previousEpisodeId, episodeId, response.settings?.toastDurationSeconds ?? 12);
+      }
+    } catch {
+      // The cached metadata can still be reported even if navigation telemetry fails.
+    }
+  }
+
+  await reportDetected(media);
+  mountForCurrentPage(true);
+  return true;
+}
+
 window.addEventListener('branilist-sync:crunchyroll-network-episode', event => {
   const raw = (event as CustomEvent<string>).detail;
   if (typeof raw !== 'string' || raw.length > 4096) return;
@@ -128,36 +164,13 @@ window.addEventListener('branilist-sync:crunchyroll-network-episode', event => {
     return;
   }
 
-  const media = networkEpisodeToMedia(detail);
-  if (!media) return;
+  networkEpisodeCache.set(detail.episodeProviderId, detail);
+
+  const liveEpisodeId = crunchyrollMediaId(livePageUrl()) ?? undefined;
+  if (!liveEpisodeId || liveEpisodeId !== detail.episodeProviderId) return;
 
   const previousEpisodeId = currentEpisodeId;
-  currentEpisodeId = media.providerEpisodeId;
-  mountedKey = '';
-
-  if (previousEpisodeId && previousEpisodeId !== media.providerEpisodeId) {
-    void chrome.runtime.sendMessage({
-      type: 'EPISODE_NAVIGATED',
-      payload: {
-        providerId: 'crunchyroll',
-        previousEpisodeId,
-        episodeProviderId: media.providerEpisodeId!,
-        canonicalUrl: media.canonicalUrl,
-        detectedAt: new Date().toISOString(),
-      },
-    }).then(response => {
-      if (response?.ok && response.settings?.showToast !== false) {
-        showEpisodeChangeToast(
-          previousEpisodeId,
-          media.providerEpisodeId!,
-          response.settings?.toastDurationSeconds ?? 12,
-        );
-      }
-    }).catch(() => undefined);
-  }
-
-  void reportDetected(media).catch(() => undefined);
-  mountForCurrentPage(true);
+  void activateCachedEpisode(liveEpisodeId, previousEpisodeId).catch(() => undefined);
 });
 
 function mountForCurrentPage(force = false): void {
@@ -235,6 +248,8 @@ async function detectEpisodeNavigation(): Promise<void> {
   const previousEpisodeId = currentEpisodeId;
   currentEpisodeId = nextEpisodeId;
   mountedKey = '';
+
+  if (await activateCachedEpisode(nextEpisodeId, previousEpisodeId)) return;
 
   try {
     const response = await chrome.runtime.sendMessage({
