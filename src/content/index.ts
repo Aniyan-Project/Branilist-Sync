@@ -88,8 +88,16 @@ function networkEpisodeToMedia(episode: CrunchyrollNetworkEpisode): DetectedMedi
 }
 
 window.addEventListener('branilist-sync:crunchyroll-network-episode', event => {
-  const detail = (event as CustomEvent<CrunchyrollNetworkEpisode>).detail;
-  if (!detail || typeof detail !== 'object') return;
+  const raw = (event as CustomEvent<string>).detail;
+  if (typeof raw !== 'string' || raw.length > 4096) return;
+
+  let detail: CrunchyrollNetworkEpisode;
+  try {
+    detail = JSON.parse(raw) as CrunchyrollNetworkEpisode;
+  } catch {
+    return;
+  }
+
   const media = networkEpisodeToMedia(detail);
   if (!media) return;
 
