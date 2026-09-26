@@ -246,66 +246,81 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         !['www.netflix.com', 'netflix.com'].includes(senderUrl.hostname)
       ) throw new Error('Diagnóstico Netflix inválido.');
 
-      const previous = ((await chrome.storage.local.get(NETFLIX_BRIDGE_DIAG))[NETFLIX_BRIDGE_DIAG] ?? {}) as NetflixBridgeDiagnostics;
       const payload = message.payload;
-      const safeGenreIds = Array.isArray(payload.genreIds)
-        ? [...new Set(payload.genreIds
-            .map(value => Number(value))
-            .filter(value => Number.isSafeInteger(value) && value > 0 && value <= 999999999))]
-            .slice(0, 100)
-        : previous.genreIds;
-      const safeGenreStatus = typeof payload.genreStatus === 'number' && Number.isInteger(payload.genreStatus)
-        ? payload.genreStatus
-        : typeof payload.genreStatus === 'string'
-          ? payload.genreStatus.slice(0, 80)
-          : previous.genreStatus;
-      const safeGenreLabels = Array.isArray(payload.genreLabels)
-        ? payload.genreLabels
-            .filter(value => typeof value === 'string')
-            .map(value => value.trim().slice(0, 200))
-            .filter(Boolean)
-            .slice(0, 50)
-        : previous.genreLabels;
-      const safeGenreSource = payload.genreSource === 'ids' || payload.genreSource === 'labels' || payload.genreSource === 'none'
-        ? payload.genreSource
-        : previous.genreSource;
-      const safeGenreFetchMode = payload.genreFetchMode === 'public'
-        ? payload.genreFetchMode
-        : previous.genreFetchMode;
-      const next: NetflixBridgeDiagnostics = {
-        ...previous,
-        ...payload,
-        active: true,
-        memberApiHost: typeof payload.memberApiHost === 'string'
-          ? payload.memberApiHost.slice(0, 300)
-          : previous.memberApiHost,
-        movieId: typeof payload.movieId === 'string' && /^\d{4,20}$/.test(payload.movieId)
-          ? payload.movieId
-          : previous.movieId,
-        lastEpisodeId: typeof payload.lastEpisodeId === 'string' && /^\d{4,20}$/.test(payload.lastEpisodeId)
-          ? payload.lastEpisodeId
-          : previous.lastEpisodeId,
-        lastSeriesId: typeof payload.lastSeriesId === 'string' && /^\d{4,20}$/.test(payload.lastSeriesId)
-          ? payload.lastSeriesId
-          : previous.lastSeriesId,
-        genreStatus: safeGenreStatus,
-        genreIds: safeGenreIds,
-        genreLabels: safeGenreLabels,
-        genreSource: safeGenreSource,
-        genreFetchMode: safeGenreFetchMode,
-        animeConfirmed: typeof payload.animeConfirmed === 'boolean'
-          ? payload.animeConfirmed
-          : previous.animeConfirmed,
-      };
-      await chrome.storage.local.set({ [NETFLIX_BRIDGE_DIAG]: next });
+      await updateTrackerSession(sender, 'netflix', session => {
+        const previous = session.netflixBridgeDiagnostics ?? {} as NetflixBridgeDiagnostics;
+        const safeGenreIds = Array.isArray(payload.genreIds)
+          ? [...new Set(payload.genreIds
+              .map(value => Number(value))
+              .filter(value => Number.isSafeInteger(value) && value > 0 && value <= 999999999))]
+              .slice(0, 100)
+          : previous.genreIds;
+        const safeGenreStatus = typeof payload.genreStatus === 'number' && Number.isInteger(payload.genreStatus)
+          ? payload.genreStatus
+          : typeof payload.genreStatus === 'string'
+            ? payload.genreStatus.slice(0, 80)
+            : previous.genreStatus;
+        const safeGenreLabels = Array.isArray(payload.genreLabels)
+          ? payload.genreLabels
+              .filter(value => typeof value === 'string')
+              .map(value => value.trim().slice(0, 200))
+              .filter(Boolean)
+              .slice(0, 50)
+          : previous.genreLabels;
+        const safeGenreSource = payload.genreSource === 'ids' || payload.genreSource === 'labels' || payload.genreSource === 'none'
+          ? payload.genreSource
+          : previous.genreSource;
+        const safeGenreFetchMode = payload.genreFetchMode === 'public'
+          ? payload.genreFetchMode
+          : previous.genreFetchMode;
+        const netflixBridgeDiagnostics: NetflixBridgeDiagnostics = {
+          ...previous,
+          ...payload,
+          active: true,
+          memberApiHost: typeof payload.memberApiHost === 'string'
+            ? payload.memberApiHost.slice(0, 300)
+            : previous.memberApiHost,
+          movieId: typeof payload.movieId === 'string' && /^\d{4,20}$/.test(payload.movieId)
+            ? payload.movieId
+            : previous.movieId,
+          lastEpisodeId: typeof payload.lastEpisodeId === 'string' && /^\d{4,20}$/.test(payload.lastEpisodeId)
+            ? payload.lastEpisodeId
+            : previous.lastEpisodeId,
+          lastSeriesId: typeof payload.lastSeriesId === 'string' && /^\d{4,20}$/.test(payload.lastSeriesId)
+            ? payload.lastSeriesId
+            : previous.lastSeriesId,
+          genreStatus: safeGenreStatus,
+          genreIds: safeGenreIds,
+          genreLabels: safeGenreLabels,
+          genreSource: safeGenreSource,
+          genreFetchMode: safeGenreFetchMode,
+          animeConfirmed: typeof payload.animeConfirmed === 'boolean'
+            ? payload.animeConfirmed
+            : previous.animeConfirmed,
+        };
+        return { ...session, netflixBridgeDiagnostics };
+      });
       return { ok: true };
     }
     if (message.type === 'BRIDGE_DIAGNOSTIC') {
       const senderUrl = sender.url ? new URL(sender.url) : null;
-      if (!senderUrl || !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname)) throw new Error('Diagnóstico inválido.');
-      const previous = ((await chrome.storage.local.get(BRIDGE_DIAG))[BRIDGE_DIAG] ?? {}) as CrunchyrollBridgeDiagnostics;
-      const next = { ...previous, ...message.payload, active: true } as CrunchyrollBridgeDiagnostics;
-      await chrome.storage.local.set({ [BRIDGE_DIAG]: next });
+      if (
+        sender.id !== chrome.runtime.id ||
+        !sender.tab ||
+        sender.frameId !== 0 ||
+        !senderUrl ||
+        !['www.crunchyroll.com', 'crunchyroll.com'].includes(senderUrl.hostname)
+      ) throw new Error('Diagnóstico inválido.');
+
+      await updateTrackerSession(sender, 'crunchyroll', session => {
+        const previous = session.bridgeDiagnostics ?? {} as CrunchyrollBridgeDiagnostics;
+        const bridgeDiagnostics = {
+          ...previous,
+          ...message.payload,
+          active: true,
+        } as CrunchyrollBridgeDiagnostics;
+        return { ...session, bridgeDiagnostics };
+      });
       return { ok: true };
     }
     if (message.type === 'EPISODE_NAVIGATED') {
@@ -320,29 +335,45 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         currentUrl.origin !== senderUrl.origin ||
         !currentUrl.pathname.includes('/watch/' + payload.episodeProviderId)
       ) throw new Error('Mudança de episódio inválida.');
-      await chrome.storage.local.set({ [NAVIGATION]: payload });
+
+      await updateTrackerSession(sender, 'crunchyroll', session => ({
+        ...session,
+        episodeNavigation: payload,
+      }));
       return { ok: true, settings: await loadSettings() };
     }
     if (message.type === 'TRACKER_DETECTED' || message.type === 'SYNC_PROGRESS') {
       const media = validateDetection(message.payload, sender);
-      const previousDiagnostics = (await chrome.storage.local.get(PROVIDER_DIAG))[PROVIDER_DIAG] as ProviderDiagnostics | undefined;
-      const providerDiagnostics: ProviderDiagnostics = {
-        ...(previousDiagnostics?.providerId === media.providerId ? previousDiagnostics : { providerId: media.providerId }),
-        providerId: media.providerId,
-        active: true,
-        lastClearedAt: undefined,
-        lastDetectedAt: new Date().toISOString(),
-        lastCanonicalUrl: media.canonicalUrl,
-        lastEpisodeId: media.providerEpisodeId,
-        lastEpisodeNumber: media.episode,
-        lastProgressPercent: media.progressPercent,
-      };
-      await chrome.storage.local.set({ [DETECTED]: media, [PROVIDER_DIAG]: providerDiagnostics });
-      await chrome.storage.local.remove([NAVIGATION]);
+      await updateTrackerSession(sender, media.providerId, session => {
+        const previousDiagnostics = session.providerDiagnostics;
+        const providerDiagnostics: ProviderDiagnostics = {
+          ...(previousDiagnostics?.providerId === media.providerId ? previousDiagnostics : { providerId: media.providerId }),
+          providerId: media.providerId,
+          active: true,
+          lastClearedAt: undefined,
+          lastDetectedAt: new Date().toISOString(),
+          lastCanonicalUrl: media.canonicalUrl,
+          lastEpisodeId: media.providerEpisodeId,
+          lastEpisodeNumber: media.episode,
+          lastProgressPercent: media.progressPercent,
+        };
+        const next = {
+          ...session,
+          detected: media,
+          providerDiagnostics,
+        };
+        delete next.episodeNavigation;
+        return next;
+      });
+
       if (message.type === 'TRACKER_DETECTED') {
         const [status, settings] = await Promise.all([authStatus(), loadSettings()]);
         if (!status.authenticated) {
-          await chrome.storage.local.remove([CURRENT_RESOLUTION]);
+          await updateTrackerSession(sender, media.providerId, session => {
+            const next = { ...session };
+            delete next.currentResolution;
+            return next;
+          });
           return { ok: true, authenticated: false, settings };
         }
         try {
@@ -352,13 +383,21 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
             result,
             resolvedAt: new Date().toISOString(),
           };
-          await chrome.storage.local.set({ [CURRENT_RESOLUTION]: currentResolution });
+          await updateTrackerSession(sender, media.providerId, session => ({
+            ...session,
+            currentResolution,
+          }));
           return { ok: true, authenticated: true, settings, result };
         } catch {
-          await chrome.storage.local.remove([CURRENT_RESOLUTION]);
+          await updateTrackerSession(sender, media.providerId, session => {
+            const next = { ...session };
+            delete next.currentResolution;
+            return next;
+          });
           return { ok: true, authenticated: true, settings, resolveError: true };
         }
       }
+
       const settings = await loadSettings();
       if (!settings.autoSync) return { ok: true, skipped: true, reason: 'auto_sync_disabled' };
       return { ok: true, lastSync: await engine.run(media) };
@@ -373,7 +412,11 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         result,
         resolvedAt: new Date().toISOString(),
       };
-      await chrome.storage.local.set({ [DETECTED]: media, [CURRENT_RESOLUTION]: currentResolution });
+      await updateTrackerSession(sender, media.providerId, session => ({
+        ...session,
+        detected: media,
+        currentResolution,
+      }));
       return { ok: true, result };
     }
     if (message.type === 'SETTINGS_GET') return { ok: true, settings: await loadSettings() };
