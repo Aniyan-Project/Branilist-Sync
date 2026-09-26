@@ -8,6 +8,7 @@ import {
 
 const EPISODE_EVENT = 'branilist-sync:netflix-network-episode';
 const DIAG_EVENT = 'branilist-sync:netflix-network-diagnostic';
+const WATCH_EVENT = 'branilist-sync:netflix-watch-changed';
 
 let lastMovieId = '';
 let lastEndpoint = '';
@@ -146,6 +147,16 @@ async function confirmAnime(seriesId: string): Promise<{ isAnime: boolean; genre
 async function probe() {
   const movieId = currentMovieId();
   const base = memberApiBase();
+
+  if (movieId && movieId !== lastMovieId) {
+    lastEpisodeId = '';
+    window.dispatchEvent(new CustomEvent(WATCH_EVENT, {
+      detail: JSON.stringify({
+        watchId: movieId,
+        canonicalUrl: `${location.origin}${location.pathname}`,
+      }),
+    }));
+  }
 
   emitDiagnostic({
     hasReactContext: Boolean((window as any).netflix?.reactContext),
