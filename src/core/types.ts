@@ -33,6 +33,7 @@ export interface NetflixBridgeDiagnostics {
   genreIds?: number[];
   genreLabels?: string[];
   genreSource?: 'ids' | 'labels' | 'none';
+  genreFetchMode?: 'public';
   animeConfirmed?: boolean;
 }
 
