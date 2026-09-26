@@ -3,6 +3,7 @@ export type MediaTitleLanguage = 'AUTO' | 'PORTUGUESE' | 'ENGLISH' | 'ROMAJI' | 
 export type LibraryStatus = 'PLANNING' | 'CURRENT' | 'COMPLETED' | 'PAUSED' | 'DROPPED';
 
 export interface CrunchyrollBridgeDiagnostics {
+  providerId?: string;
   active: boolean;
   startedAt?: string;
   jsonResponsesSeen: number;
@@ -34,6 +35,7 @@ export interface DetectedMedia {
   providerEpisodeId?: string;
   providerSeasonId?: string;
   providerSeasonSlug?: string;
+  providerSeasonNumber?: number;
   providerSeriesId?: string;
   kind: MediaKind;
   title: string;
@@ -197,7 +199,7 @@ export type ExtensionMessage =
   | { type: 'TRACKER_DETECTED'; payload: DetectedMedia }
   | { type: 'EPISODE_NAVIGATED'; payload: EpisodeNavigationState }
   | { type: 'BRIDGE_DIAGNOSTIC'; payload: Partial<CrunchyrollBridgeDiagnostics> }
-  | { type: 'TRACKER_CLEARED'; payload: { providerId: 'crunchyroll'; canonicalUrl: string } }
+  | { type: 'TRACKER_CLEARED'; payload: { providerId: 'crunchyroll' | 'netflix'; canonicalUrl: string } }
   | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
