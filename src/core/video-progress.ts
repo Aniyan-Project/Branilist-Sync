@@ -7,7 +7,7 @@ export function observeVideoProgress(
   root: Document,
   options: VideoProgressOptions,
 ): () => void {
-  const threshold = options.thresholdPercent ?? 80;
+  const threshold = options.thresholdPercent ?? 90;
   let video: HTMLVideoElement | null = null;
   let completed = false;
   let detachVideo: (() => void) | null = null;
