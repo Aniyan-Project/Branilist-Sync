@@ -261,6 +261,9 @@ function activateTab(name: string) {
 function renderCurrentMedia(media: DetectedMedia | null) {
   currentMatchEl.hidden = true;
   currentMatchedMedia = null;
+  currentEntry = null;
+  currentList.hidden = true;
+  currentFlow.replaceChildren();
   if (!media) {
     currentMediaEl.hidden = true;
     currentEmptyEl.hidden = false;
@@ -295,6 +298,9 @@ async function hydrateCurrentMatch(media: DetectedMedia | null, lastSync?: SyncS
     total ? `${total} ${detail.type === 'ANIME' ? 'eps.' : 'caps.'}` : null,
   ].filter(Boolean).join(' • ');
   currentMatchEl.hidden = false;
+
+  if (authenticated && !libraryLoaded) await loadLibrary();
+  renderCurrentEntry(library.find(entry => entry.mediaId === detail.id) ?? null);
 }
 
 function renderPending(state: SyncState | null) {
