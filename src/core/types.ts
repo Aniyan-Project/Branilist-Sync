@@ -13,6 +13,23 @@ export interface CrunchyrollBridgeDiagnostics {
   lastEpisodeAt?: string;
 }
 
+export interface NetflixBridgeDiagnostics {
+  active: boolean;
+  startedAt?: string;
+  checkedAt?: string;
+  hasReactContext?: boolean;
+  hasMemberApi?: boolean;
+  movieId?: string;
+  memberApiHost?: string;
+  lastMetadataStatus?: number | string;
+  lastMetadataAt?: string;
+  metadataMatched?: boolean;
+  lastEpisodeId?: string;
+  lastEpisodeNumber?: number;
+  lastSeasonNumber?: number;
+  lastSeriesId?: string;
+}
+
 export interface EpisodeNavigationState {
   providerId: string;
   previousEpisodeId?: string;
@@ -227,6 +244,7 @@ export type ExtensionMessage =
   | { type: 'TRACKER_DETECTED'; payload: DetectedMedia }
   | { type: 'EPISODE_NAVIGATED'; payload: EpisodeNavigationState }
   | { type: 'BRIDGE_DIAGNOSTIC'; payload: Partial<CrunchyrollBridgeDiagnostics> }
+  | { type: 'NETFLIX_BRIDGE_DIAGNOSTIC'; payload: Partial<NetflixBridgeDiagnostics> }
   | { type: 'PROVIDER_DIAGNOSTIC'; payload: ProviderPageDiagnostic }
   | { type: 'TRACKER_CLEARED'; payload: { providerId: string; canonicalUrl: string } }
   | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
