@@ -3,7 +3,34 @@ import type { DetectedMedia } from '../core/types';
 import { showDetectionToast } from './toast';
 
 let cleanup: (() => void) | null = null;
-let mountedHref = '';
+let mountedKey = '';
+let remountQueued = false;
+
+function candidatePageUrl(): URL {
+  const live = new URL(window.location.href);
+  const candidates = [
+    document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href,
+    document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.content,
+  ];
+
+  for (const raw of candidates) {
+    if (!raw) continue;
+    try {
+      const candidate = new URL(raw, live);
+      if (candidate.origin !== live.origin) continue;
+      if (providerForUrl(candidate)) return candidate;
+    } catch {
+      // Ignore transient/stale SPA metadata.
+    }
+  }
+  return live;
+}
+
+function pageKey(): string {
+  const live = window.location.href;
+  const effective = candidatePageUrl().href;
+  return live === effective ? live : live + '|' + effective;
+}
 
 async function reportDetected(media: DetectedMedia): Promise<void> {
   const response = await chrome.runtime.sendMessage({ type: 'TRACKER_DETECTED', payload: media });
@@ -14,14 +41,15 @@ async function reportProgress(media: DetectedMedia): Promise<void> {
   await chrome.runtime.sendMessage({ type: 'SYNC_PROGRESS', payload: media });
 }
 
-function mountForCurrentPage(): void {
-  if (location.href === mountedHref) return;
+function mountForCurrentPage(force = false): void {
+  const key = pageKey();
+  if (!force && key === mountedKey) return;
 
   cleanup?.();
   cleanup = null;
-  mountedHref = location.href;
+  mountedKey = key;
 
-  const url = new URL(location.href);
+  const url = candidatePageUrl();
   const provider = providerForUrl(url);
   if (!provider) return;
 
@@ -32,8 +60,10 @@ function mountForCurrentPage(): void {
   let attempts = 0;
   const maxAttempts = 40;
 
+  const stillCurrent = () => !stopped && pageKey() === key;
+
   const stopProgress = provider.observe?.(ctx, (media) => {
-    if (location.href === url.href) void reportProgress(media).catch(() => undefined);
+    if (stillCurrent()) void reportProgress(media).catch(() => undefined);
   }) ?? null;
 
   const stopDetectionTimer = () => {
@@ -44,13 +74,13 @@ function mountForCurrentPage(): void {
   };
 
   const tryDetect = async () => {
-    if (stopped || detected || detecting || location.href !== url.href) return;
+    if (!stillCurrent() || detected || detecting) return;
     detecting = true;
     attempts += 1;
 
     try {
       const media = await provider.detect(ctx);
-      if (!media || stopped || location.href !== url.href) {
+      if (!media || !stillCurrent()) {
         if (attempts >= maxAttempts) stopDetectionTimer();
         return;
       }
@@ -78,6 +108,39 @@ function mountForCurrentPage(): void {
   };
 }
 
+function queueRemount(): void {
+  if (remountQueued) return;
+  remountQueued = true;
+  window.setTimeout(() => {
+    remountQueued = false;
+    mountForCurrentPage();
+  }, 0);
+}
+
+const dispatchNavigation = () => window.dispatchEvent(new Event('branilist:navigation'));
+const originalPushState = history.pushState.bind(history);
+const originalReplaceState = history.replaceState.bind(history);
+
+history.pushState = function (...args: Parameters<History['pushState']>) {
+  originalPushState(...args);
+  dispatchNavigation();
+};
+history.replaceState = function (...args: Parameters<History['replaceState']>) {
+  originalReplaceState(...args);
+  dispatchNavigation();
+};
+
+window.addEventListener('popstate', dispatchNavigation);
+window.addEventListener('branilist:navigation', queueRemount);
+
+const metadataObserver = new MutationObserver(queueRemount);
+metadataObserver.observe(document.documentElement, {
+  subtree: true,
+  childList: true,
+  attributes: true,
+  attributeFilter: ['href', 'content'],
+});
+
 mountForCurrentPage();
 
 const navigationObserver = window.setInterval(mountForCurrentPage, 750);
@@ -86,6 +149,11 @@ window.addEventListener(
   'pagehide',
   () => {
     window.clearInterval(navigationObserver);
+    metadataObserver.disconnect();
+    window.removeEventListener('popstate', dispatchNavigation);
+    window.removeEventListener('branilist:navigation', queueRemount);
+    history.pushState = originalPushState;
+    history.replaceState = originalReplaceState;
     cleanup?.();
   },
   { once: true },
