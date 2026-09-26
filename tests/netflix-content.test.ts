@@ -162,3 +162,59 @@ it('keeps Netflix active on a non-watch route while real player evidence is pres
   );
   expect(mocks.detect).toHaveBeenCalled();
 });
+
+
+it('does not report or toast the same Netflix episode more than once', async () => {
+  mocks.detect.mockResolvedValue(first);
+
+  await import('../src/content/index');
+  await Promise.resolve();
+
+  const event = new CustomEvent('branilist-sync:netflix-network-episode', {
+    detail: JSON.stringify({
+      episodeProviderId: '81234567',
+      seasonProviderId: '1',
+      seriesProviderId: '90000001',
+      seriesTitle: 'Example Anime',
+      season: 1,
+      episode: 1,
+    }),
+  });
+
+  window.dispatchEvent(event);
+  await Promise.resolve();
+  await Promise.resolve();
+
+  window.dispatchEvent(new CustomEvent('branilist-sync:netflix-network-episode', {
+    detail: event.detail,
+  }));
+  await Promise.resolve();
+  await Promise.resolve();
+
+  const detectedCalls = vi.mocked(chrome.runtime.sendMessage).mock.calls
+    .filter(([message]) => message?.type === 'TRACKER_DETECTED');
+
+  expect(detectedCalls).toHaveLength(1);
+  expect(mocks.toast).toHaveBeenCalledTimes(1);
+});
+
+it('does not remount Netflix when only volatile player title DOM changes', async () => {
+  document.body.innerHTML = `
+    <div data-uia="watch-video">
+      <video></video>
+      <div data-uia="video-title"><span>Example AnimeE1Episode 1</span></div>
+    </div>
+  `;
+  mocks.detect.mockResolvedValue(first);
+
+  await import('../src/content/index');
+  await Promise.resolve();
+  expect(mocks.detect).toHaveBeenCalledTimes(1);
+
+  document.querySelector('[data-uia="video-title"]')!.textContent = 'Example AnimeE1Episode 1 • controls visible';
+  await vi.advanceTimersByTimeAsync(20);
+  await Promise.resolve();
+
+  expect(mocks.detect).toHaveBeenCalledTimes(1);
+  expect(mocks.toast).toHaveBeenCalledTimes(1);
+});
