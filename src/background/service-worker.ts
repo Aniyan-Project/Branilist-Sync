@@ -3,6 +3,7 @@ import { getLibrary, getMe, getMediaDetail, resolveMedia, saveUserMapping, syncP
 import { SyncEngine, type SyncSnapshot } from '../core/sync-engine';
 import { trustedPopup, validateDetection } from '../core/message-policy';
 import { loadSettings, saveSettings } from '../core/settings';
+import { crunchyrollLegacyMappingIds } from '../providers/crunchyroll/identity';
 import type { CrunchyrollBridgeDiagnostics, CurrentResolution, DetectedMedia, EpisodeNavigationState, ExtensionMessage } from '../core/types';
 
 const KEY = 'branilist.sync.v4';
@@ -19,6 +20,30 @@ const engine = new SyncEngine({
 });
 // Account changes and writes must not race. Persisted events belong to this account.
 let queue: Promise<unknown> = ready;
+
+function trustedMappingResult(result: Awaited<ReturnType<typeof resolveMedia>>): boolean {
+  return result.matched === true &&
+    result.requiresConfirmation === false &&
+    result.action === 'MATCHED' &&
+    Number.isSafeInteger(result.mediaId) &&
+    (result.mediaId ?? 0) > 0 &&
+    result.confidence === 1;
+}
+
+async function resolveWithLegacyMigration(media: DetectedMedia) {
+  let result = await resolveMedia(media);
+  if (trustedMappingResult(result) || media.providerId !== 'crunchyroll') return result;
+
+  for (const legacyId of crunchyrollLegacyMappingIds(media)) {
+    const legacy = await resolveMedia({ ...media, providerMediaId: legacyId });
+    if (!trustedMappingResult(legacy)) continue;
+
+    await saveUserMapping(media, legacy.mediaId!);
+    result = legacy;
+    break;
+  }
+  return result;
+}
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendResponse) => {
   const task = async () => {
     await ready;
@@ -71,7 +96,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           return { ok: true, authenticated: false, settings };
         }
         try {
-          const result = await resolveMedia(media);
+          const result = await resolveWithLegacyMigration(media);
           const currentResolution: CurrentResolution = {
             media,
             result,
