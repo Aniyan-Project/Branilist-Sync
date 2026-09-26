@@ -1,5 +1,5 @@
 import { authStatus, login, logout } from '../core/auth';
-import { getMe, resolveMedia, saveUserMapping, syncProgress } from '../core/api';
+import { getLibrary, getMe, getMediaDetail, resolveMedia, saveUserMapping, syncProgress, updateLibrary } from '../core/api';
 import { SyncEngine, type SyncSnapshot } from '../core/sync-engine';
 import { trustedPopup, validateDetection } from '../core/message-policy';
 import type { DetectedMedia, ExtensionMessage } from '../core/types';
@@ -53,6 +53,16 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       return { ok: true };
     }
     if (message.type === 'SYNC_RETRY') return { ok: true, lastSync: await engine.run(undefined, message.retryId) };
+    if (message.type === 'LIBRARY_GET') return { ok: true, ...(await getLibrary()) };
+    if (message.type === 'LIBRARY_UPDATE') {
+      if (!Number.isSafeInteger(message.mediaId) || message.mediaId < 1) throw new Error('Mídia Branilist inválida.');
+      await updateLibrary(message.mediaId, message.payload);
+      return { ok: true };
+    }
+    if (message.type === 'MEDIA_GET') {
+      if (!Number.isSafeInteger(message.mediaId) || message.mediaId < 1) throw new Error('Mídia Branilist inválida.');
+      return { ok: true, media: await getMediaDetail(message.mediaId) };
+    }
     if (message.type === 'AUTH_STATUS') {
       const status = await authStatus();
       let profile = null;

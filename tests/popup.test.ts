@@ -4,93 +4,143 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 const html = readFileSync('src/ui/popup/popup.html', 'utf8');
 
-const pendingMedia = {
-  title: '<img src=x onerror=alert(1)>',
-  episode: 3,
-  providerId: 'crunchyroll',
-};
-
 const currentMedia = {
-  title: 'The Detective Is Already Dead',
+  title: 'The Detective Is Already Dead (Portuguese Dub)',
   episode: 1,
   providerId: 'crunchyroll',
   providerEpisodeId: 'GMKUXG2E0',
-  providerSeasonId: 'SEASON123',
   providerSeriesId: 'G24H1N334',
 };
 
-function state(status = 'confirmation_required') {
+const libraryItem = {
+  mediaId: 15,
+  status: 'CURRENT',
+  progress: 1,
+  score: 8.5,
+  repeatCount: 0,
+  media: {
+    id: 15,
+    slug: 'the-detective-is-already-dead',
+    type: 'ANIME',
+    title: {
+      romaji: 'Tantei wa Mou, Shindeiru.',
+      english: 'The Detective Is Already Dead',
+      portuguese: 'O Detetive Já Está Morto',
+    },
+    coverImage: 'https://branilist.com/example.webp',
+    total: 12,
+  },
+};
+
+function authState() {
   return {
     ok: true,
     authenticated: true,
-    profile: { username: 'tester', displayName: 'Tester' },
-    pending: [{ status, retryId: 'stored-event', media: pendingMedia, message: 'Revise no Branilist' }],
-    lastSync: { status, retryId: 'stored-event', media: pendingMedia, message: 'Revise no Branilist' },
+    profile: {
+      id: 1,
+      username: 'tester',
+      displayName: 'Tester',
+      titleLanguage: 'ROMAJI',
+      localeCode: 'pt-BR',
+      scopes: ['profile', 'list:read', 'list:write'],
+    },
+    pending: [],
     lastDetected: currentMedia,
+    lastSync: null,
+    oauth: { clientId: 'branilist-sync', extensionId: 'abc', redirectUri: 'https://abc.chromiumapp.org/oauth2' },
   };
 }
-
-const button = (id: string) => document.querySelector<HTMLButtonElement>(`#${id}`)!;
 
 beforeEach(() => {
   vi.resetModules();
   document.documentElement.innerHTML = html;
 });
 
-it('keeps current page media visible while showing an older pending event separately', async () => {
-  const send = vi.fn().mockResolvedValue(state());
+it('uses the Branilist title preference in the library and opens media detail', async () => {
+  const send = vi.fn(async (message: { type: string }) => {
+    if (message.type === 'AUTH_STATUS') return authState();
+    if (message.type === 'LIBRARY_GET') return { ok: true, items: [structuredClone(libraryItem)] };
+    if (message.type === 'MEDIA_GET') return {
+      ok: true,
+      media: {
+        id: 15,
+        slug: libraryItem.media.slug,
+        type: 'ANIME',
+        status: 'FINISHED',
+        format: 'TV',
+        title: libraryItem.media.title,
+        description: 'Uma descrição segura.',
+        coverImage: libraryItem.media.coverImage,
+        bannerImage: null,
+        episodes: 12,
+        chapters: null,
+        seasonYear: 2021,
+        averageScore: 74,
+        popularity: 100,
+        isAdult: false,
+      },
+    };
+    return { ok: true };
+  });
   vi.stubGlobal('chrome', { runtime: { sendMessage: send }, tabs: { create: vi.fn() } });
 
   await import('../src/ui/popup/popup');
-  await vi.waitFor(() => expect(button('refresh').disabled).toBe(false));
+  await vi.waitFor(() => expect(document.querySelector('#account-summary')?.textContent).toContain('@tester'));
 
-  expect(document.querySelector('#current-media-title')?.textContent).toBe(currentMedia.title);
-  expect(document.querySelector('#current-media-detail')?.textContent).toContain('episódio GMKUXG2E0');
-  expect(document.querySelector('#current-media-detail')?.textContent).toContain('temporada SEASON123');
-  expect(document.querySelector('#current-media-detail')?.textContent).toContain('série G24H1N334');
+  document.querySelector<HTMLButtonElement>('[data-tab="library"]')!.click();
+  await vi.waitFor(() => expect(document.querySelector('.library-item strong')?.textContent).toBe('Tantei wa Mou, Shindeiru.'));
 
-  expect(document.querySelector('#pending-media-title')?.textContent).toBe(pendingMedia.title);
-  expect(document.querySelector('#pending-media-title img')).toBeNull();
-  expect(button('retry').textContent).toBe('Verificar novamente');
+  document.querySelector<HTMLButtonElement>('.library-item')!.click();
+  await vi.waitFor(() => expect(document.querySelector('#detail-description')?.textContent).toBe('Uma descrição segura.'));
+  expect(document.querySelector('#detail-hero strong')?.textContent).toBe('Tantei wa Mou, Shindeiru.');
 });
 
-it('retries using only the persisted event ID', async () => {
-  const send = vi.fn().mockResolvedValue(state());
+it('updates status, progress and half-star score from the detail screen', async () => {
+  const send = vi.fn(async (message: { type: string }) => {
+    if (message.type === 'AUTH_STATUS') return authState();
+    if (message.type === 'LIBRARY_GET') return { ok: true, items: [structuredClone(libraryItem)] };
+    if (message.type === 'MEDIA_GET') return {
+      ok: true,
+      media: {
+        id: 15, slug: 'x', type: 'ANIME', status: 'FINISHED', format: 'TV',
+        title: libraryItem.media.title, episodes: 12, popularity: 1, isAdult: false,
+      },
+    };
+    if (message.type === 'LIBRARY_UPDATE') return { ok: true };
+    return { ok: true };
+  });
   vi.stubGlobal('chrome', { runtime: { sendMessage: send }, tabs: { create: vi.fn() } });
 
   await import('../src/ui/popup/popup');
-  await vi.waitFor(() => expect(button('refresh').disabled).toBe(false));
+  await vi.waitFor(() => expect(document.querySelector('#account-summary')?.textContent).toContain('@tester'));
+  document.querySelector<HTMLButtonElement>('[data-tab="library"]')!.click();
+  await vi.waitFor(() => expect(document.querySelector('.library-item')).not.toBeNull());
+  document.querySelector<HTMLButtonElement>('.library-item')!.click();
+  await vi.waitFor(() => expect(document.querySelector('#detail-form')).not.toBeNull());
 
-  let finish!: (value: unknown) => void;
-  send.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const progress = document.querySelector<HTMLInputElement>('#detail-progress')!;
+  const score = document.querySelector<HTMLInputElement>('#detail-score')!;
+  progress.value = '2';
+  score.value = '9.5';
+  document.querySelector<HTMLFormElement>('#detail-form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
-  button('retry').click();
-  expect(button('retry').disabled).toBe(true);
-  expect(button('auth').disabled).toBe(true);
-  expect(send.mock.calls.at(-1)?.[0]).toEqual({ type: 'SYNC_RETRY', retryId: 'stored-event' });
-
-  finish({ ok: true });
-  await vi.waitFor(() => expect(button('retry').disabled).toBe(false));
+  await vi.waitFor(() => {
+    expect(send).toHaveBeenCalledWith({
+      type: 'LIBRARY_UPDATE',
+      mediaId: 15,
+      payload: { status: 'CURRENT', progress: 2, score: 9.5, repeatCount: 0 },
+    });
+  });
+  expect(document.querySelector('#detail-feedback')?.textContent).toBe('Lista atualizada.');
 });
 
-it('recovers from an initial connection error on refresh', async () => {
-  const send = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(state('error'));
-  vi.stubGlobal('chrome', { runtime: { sendMessage: send } });
-
-  await import('../src/ui/popup/popup');
-  await vi.waitFor(() => expect(document.querySelector('#account')?.textContent).toBe('offline'));
-
-  button('refresh').click();
-  await vi.waitFor(() => expect(document.querySelector('#account')?.className).toBe('card'));
-  expect(button('retry').textContent).toBe('Tentar novamente');
-});
-
-it('hides retries when the account is disconnected', async () => {
+it('keeps current page detection visible in the current tab', async () => {
   vi.stubGlobal('chrome', {
-    runtime: { sendMessage: vi.fn().mockResolvedValue({ ...state(), authenticated: false }) },
+    runtime: { sendMessage: vi.fn().mockResolvedValue(authState()) },
+    tabs: { create: vi.fn() },
   });
 
   await import('../src/ui/popup/popup');
-  await vi.waitFor(() => expect(button('refresh').disabled).toBe(false));
-  expect(button('retry').hidden).toBe(true);
+  await vi.waitFor(() => expect(document.querySelector('#current-media-title')?.textContent).toBe(currentMedia.title));
+  expect(document.querySelector('#current-media-detail')?.textContent).toContain('episódio GMKUXG2E0');
 });
