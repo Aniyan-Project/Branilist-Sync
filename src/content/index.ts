@@ -1,10 +1,12 @@
 import { providerForUrl } from '../core/provider-registry';
+import { crunchyrollMediaId } from '../providers/crunchyroll/meta';
 import type { DetectedMedia } from '../core/types';
-import { showDetectionToast } from './toast';
+import { showDetectionToast, showEpisodeChangeToast } from './toast';
 
 let cleanup: (() => void) | null = null;
 let mountedKey = '';
 let remountQueued = false;
+let currentEpisodeId = crunchyrollMediaId(new URL(location.href)) ?? undefined;
 
 function livePageUrl(): URL {
   return new URL(location.href);
@@ -130,6 +132,40 @@ function mountForCurrentPage(force = false): void {
   };
 }
 
+async function detectEpisodeNavigation(): Promise<void> {
+  const url = livePageUrl();
+  const nextEpisodeId = crunchyrollMediaId(url) ?? undefined;
+  if (!nextEpisodeId || nextEpisodeId === currentEpisodeId) return;
+
+  const previousEpisodeId = currentEpisodeId;
+  currentEpisodeId = nextEpisodeId;
+  mountedKey = '';
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'EPISODE_NAVIGATED',
+      payload: {
+        providerId: 'crunchyroll',
+        previousEpisodeId,
+        episodeProviderId: nextEpisodeId,
+        canonicalUrl: `${url.origin}${url.pathname}`,
+        detectedAt: new Date().toISOString(),
+      },
+    });
+    if (response?.ok && response.settings?.showToast !== false) {
+      showEpisodeChangeToast(
+        previousEpisodeId,
+        nextEpisodeId,
+        response.settings?.toastDurationSeconds ?? 12,
+      );
+    }
+  } catch {
+    // A navigation hint must never block the safe parser from retrying.
+  }
+
+  mountForCurrentPage(true);
+}
+
 function queueRemount(): void {
   if (remountQueued) return;
   remountQueued = true;
@@ -150,7 +186,10 @@ mutationObserver.observe(document.documentElement, {
 
 mountForCurrentPage();
 
-const navigationObserver = window.setInterval(mountForCurrentPage, 500);
+const navigationObserver = window.setInterval(() => {
+  void detectEpisodeNavigation();
+  mountForCurrentPage();
+}, 250);
 
 window.addEventListener(
   'pagehide',
