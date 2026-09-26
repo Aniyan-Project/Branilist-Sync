@@ -1,5 +1,5 @@
 import { observeVideoProgress } from '../core/video-progress';
-import type { TrackerProvider } from '../core/types';
+import type { DetectedMedia, TrackerProvider } from '../core/types';
 import { parseCrunchyrollMetadata } from './crunchyroll/meta';
 
 export const crunchyrollProvider: TrackerProvider = {
@@ -28,7 +28,7 @@ export const crunchyrollProvider: TrackerProvider = {
   },
 
   observe(ctx, emit) {
-    let current: Awaited<ReturnType<typeof this.detect>> = null;
+    let current: DetectedMedia | null = null;
 
     void this.detect(ctx).then((detected) => {
       current = detected;
