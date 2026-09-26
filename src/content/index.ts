@@ -1,11 +1,13 @@
 import { providerForUrl } from '../core/provider-registry';
 import type { DetectedMedia } from '../core/types';
+import { showDetectionToast } from './toast';
 
 let cleanup: (() => void) | null = null;
 let mountedHref = '';
 
 async function reportDetected(media: DetectedMedia): Promise<void> {
-  await chrome.runtime.sendMessage({ type: 'TRACKER_DETECTED', payload: media });
+  const response = await chrome.runtime.sendMessage({ type: 'TRACKER_DETECTED', payload: media });
+  if (response?.ok) showDetectionToast(media, response);
 }
 
 async function reportProgress(media: DetectedMedia): Promise<void> {
