@@ -48,6 +48,7 @@ const syncEl = $('#sync');
 const syncTitleEl = $('#sync-title');
 const syncMessageEl = $('#sync-message');
 const syncCandidatesEl = $('#sync-candidates');
+const pendingCandidatesEl = $('#pending-candidates');
 const retryButton = $('#retry') as HTMLButtonElement;
 
 const librarySearch = $('#library-search') as HTMLInputElement;
@@ -303,6 +304,38 @@ async function hydrateCurrentMatch(media: DetectedMedia | null, lastSync?: SyncS
   renderCurrentEntry(library.find(entry => entry.mediaId === detail.id) ?? null);
 }
 
+async function hydratePendingCandidates(state: SyncState | null) {
+  pendingCandidatesEl.replaceChildren();
+  const ids = state?.status === 'confirmation_required' ? state.result?.candidates ?? [] : [];
+  if (!ids.length) return;
+
+  const details = await Promise.all(ids.slice(0, 6).map(async mediaId => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'MEDIA_GET', mediaId });
+      return response?.ok ? response.media as MediaDetail : null;
+    } catch {
+      return null;
+    }
+  }));
+
+  if (retryId !== state?.retryId) return;
+  for (const media of details.filter(Boolean) as MediaDetail[]) {
+    const item = document.createElement('div');
+    item.className = 'candidate';
+    const image = document.createElement('img');
+    image.alt = '';
+    if (media.coverImage) image.src = media.coverImage;
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = titleFor(media.title, profile?.titleLanguage, profile?.localeCode);
+    const meta = document.createElement('small');
+    meta.textContent = [media.format, media.seasonYear, 'Branilist #' + media.id].filter(Boolean).join(' • ');
+    copy.append(title, meta);
+    item.append(image, copy);
+    pendingCandidatesEl.append(item);
+  }
+}
+
 function renderPending(state: SyncState | null) {
   retryId = state?.retryId;
   retryButton.hidden = !authenticated || !retryId || !state ||
@@ -340,9 +373,10 @@ function renderPending(state: SyncState | null) {
   const candidates = state.result?.candidates ?? [];
   syncCandidatesEl.textContent = state.status === 'confirmation_required'
     ? candidates.length
-      ? `Candidatos Branilist: ${candidates.join(', ')}.`
+      ? 'Encontramos ' + candidates.length + ' candidato(s) para revisão.'
       : 'A correspondência precisa de revisão.'
     : '';
+  void hydratePendingCandidates(state);
 }
 
 function renderPendingList(lastSync?: SyncState | null) {
