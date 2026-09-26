@@ -1,6 +1,7 @@
 export interface CrunchyrollNetworkEpisode {
   episodeProviderId: string;
   seasonProviderId?: string;
+  seasonSlug?: string;
   seriesProviderId?: string;
   seriesTitle: string;
   seasonTitle?: string;
@@ -53,6 +54,7 @@ export function extractCrunchyrollNetworkEpisodes(payload: unknown): Crunchyroll
         found.set(episodeProviderId, {
           episodeProviderId,
           seasonProviderId: token(meta?.season_id),
+          seasonSlug: text(meta?.season_slug_title),
           seriesProviderId: token(meta?.series_id),
           seriesTitle,
           seasonTitle: text(meta?.season_title),
