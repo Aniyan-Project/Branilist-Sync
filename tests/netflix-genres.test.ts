@@ -84,3 +84,45 @@ it('does not treat unrelated page text mentioning anime as genre evidence', () =
   expect(labels).toEqual(['Crime TV Shows', 'TV Dramas']);
   expect(classifyNetflixGenreLabels(labels)).toBe(false);
 });
+
+
+it('extracts comma-separated genres from a public Netflix title details section', () => {
+  const document = new DOMParser().parseFromString(`
+    <section>
+      <h3>More Details</h3>
+      <div class="detail-row">
+        <h4>Genres</h4>
+        <p>Sci-Fi &amp; Fantasy Anime, Japanese, Anime based on Light Novels, Anime Series</p>
+      </div>
+    </section>
+  `, 'text/html');
+
+  const labels = extractNetflixGenreLabelsFromTitleDocument(document);
+  expect(labels).toEqual([
+    'Sci-Fi & Fantasy Anime',
+    'Japanese',
+    'Anime based on Light Novels',
+    'Anime Series',
+  ]);
+  expect(classifyNetflixGenreLabels(labels)).toBe(true);
+});
+
+it('supports Portuguese public genre headings without scanning unrelated recommendations', () => {
+  const document = new DOMParser().parseFromString(`
+    <section>
+      <div>
+        <span>Gêneros</span>
+        <div>Anime de ficção científica e fantasia, Japonês, Séries de anime</div>
+      </div>
+      <div>Recomendado porque você viu Anime</div>
+    </section>
+  `, 'text/html');
+
+  const labels = extractNetflixGenreLabelsFromTitleDocument(document);
+  expect(labels).toEqual([
+    'Anime de ficção científica e fantasia',
+    'Japonês',
+    'Séries de anime',
+  ]);
+  expect(classifyNetflixGenreLabels(labels)).toBe(true);
+});
