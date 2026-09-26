@@ -2,6 +2,7 @@ import { authStatus, login, logout } from '../core/auth';
 import { getLibrary, getMe, getMediaDetail, resolveMedia, saveUserMapping, syncProgress, updateLibrary } from '../core/api';
 import { SyncEngine, type SyncSnapshot } from '../core/sync-engine';
 import { trustedPopup, validateDetection } from '../core/message-policy';
+import { loadSettings, saveSettings } from '../core/settings';
 import type { DetectedMedia, ExtensionMessage } from '../core/types';
 
 const KEY = 'branilist.sync.v4';
@@ -23,14 +24,16 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       const media = validateDetection(message.payload, sender);
       await chrome.storage.local.set({ [DETECTED]: media });
       if (message.type === 'TRACKER_DETECTED') {
-        const status = await authStatus();
-        if (!status.authenticated) return { ok: true, authenticated: false };
+        const [status, settings] = await Promise.all([authStatus(), loadSettings()]);
+        if (!status.authenticated) return { ok: true, authenticated: false, settings };
         try {
-          return { ok: true, authenticated: true, result: await resolveMedia(media) };
+          return { ok: true, authenticated: true, settings, result: await resolveMedia(media) };
         } catch {
-          return { ok: true, authenticated: true, resolveError: true };
+          return { ok: true, authenticated: true, settings, resolveError: true };
         }
       }
+      const settings = await loadSettings();
+      if (!settings.autoSync) return { ok: true, skipped: true, reason: 'auto_sync_disabled' };
       return { ok: true, lastSync: await engine.run(media) };
     }
     if (message.type === 'SAVE_USER_MAPPING') {
@@ -41,7 +44,9 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       await chrome.storage.local.set({ [DETECTED]: media });
       return { ok: true, result };
     }
+    if (message.type === 'SETTINGS_GET') return { ok: true, settings: await loadSettings() };
     if (!trustedPopup(sender)) throw new Error('Ação permitida somente no popup.');
+    if (message.type === 'SETTINGS_SET') return { ok: true, settings: await saveSettings(message.payload) };
     if (message.type === 'AUTH_LOGIN') {
       await login();
       await chrome.storage.local.remove([KEY, DETECTED]);
@@ -71,11 +76,14 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         try { profile = await getMe(); }
         catch { profileError = 'Não foi possível consultar a conta. Verifique a conexão ou vincule novamente.'; }
       }
-      return { ok: true, ...await authStatus(), profile, profileError,
+      const snapshot = await engine.snapshot();
+      const settings = await loadSettings();
+      return { ok: true, ...await authStatus(), profile, profileError, settings,
         oauth: { clientId: 'branilist-sync', extensionId: chrome.runtime.id, redirectUri: chrome.identity.getRedirectURL('oauth2') },
         lastDetected: (await chrome.storage.local.get(DETECTED))[DETECTED] as DetectedMedia | undefined,
-        pending: (await engine.snapshot()).events.filter(event => ['resolved', 'error', 'confirmation_required'].includes(event.state.status)).map(event => event.state),
-        lastSync: (await engine.snapshot()).lastSync };
+        pending: snapshot.events.filter(event => ['resolved', 'error', 'confirmation_required'].includes(event.state.status)).map(event => event.state),
+        history: snapshot.events.slice(-20).reverse().map(event => ({ ...event.state, occurredAt: event.occurredAt })),
+        lastSync: snapshot.lastSync };
     }
     throw new Error('Ação desconhecida.');
   };
