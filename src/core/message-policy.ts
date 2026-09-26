@@ -2,7 +2,7 @@ import type { DetectedMedia } from './types';
 import { crunchyrollMediaId } from '../providers/crunchyroll/meta';
 import { crunchyrollSeasonIdentity } from '../providers/crunchyroll/identity';
 import {
-  netflixSeasonIdentity,
+  netflixProviderMediaIdentity,
   netflixSeriesIdentity,
   netflixWatchId,
 } from '../providers/netflix/meta';
@@ -77,14 +77,18 @@ function validateNetflix(media: DetectedMedia, source: URL, canonical: URL): Det
     : NaN;
   const seriesId = safeText(media.providerSeriesId, 200);
   const allowedHost = ['www.netflix.com', 'netflix.com'].includes(source.hostname);
+  const titleIdentity = netflixSeriesIdentity(title ?? '');
+  const stableSeriesId = seriesId && /^\d{4,20}$/.test(seriesId) ? seriesId : undefined;
+  const acceptedSeriesIdentity = stableSeriesId ?? titleIdentity;
+  const expectedProviderMediaId = netflixProviderMediaIdentity(stableSeriesId, title ?? '', season);
 
   if (!allowedHost || !episodeId || source.origin !== canonical.origin ||
     media.providerId !== 'netflix' || media.kind !== 'ANIME' ||
     !declaredEpisodeId || declaredEpisodeId !== episodeId ||
     !title || !Number.isSafeInteger(season) || season <= 0 ||
     !Number.isSafeInteger(media.episode) || media.episode! <= 0 ||
-    seriesId !== netflixSeriesIdentity(title) ||
-    providerMediaId !== netflixSeasonIdentity(title, season)) {
+    seriesId !== acceptedSeriesIdentity ||
+    providerMediaId !== expectedProviderMediaId) {
     throw new Error('Mídia inválida para esta página.');
   }
 
