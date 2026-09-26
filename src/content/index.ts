@@ -1,7 +1,9 @@
 import { providerForHost, providerForUrl } from '../core/provider-registry';
 import { crunchyrollMediaId } from '../providers/crunchyroll/meta';
 import { netflixPlayerProbe, netflixWatchIdFromDocument } from '../providers/netflix/meta';
-import type { CrunchyrollBridgeDiagnostics, DetectedMedia } from '../core/types';
+import { setNetflixNetworkEpisode } from '../providers/netflix';
+import type { NetflixNetworkEpisode } from '../providers/netflix/network';
+import type { CrunchyrollBridgeDiagnostics, DetectedMedia, NetflixBridgeDiagnostics } from '../core/types';
 import type { CrunchyrollNetworkEpisode } from '../providers/crunchyroll/network';
 import { crunchyrollSeasonIdentity } from '../providers/crunchyroll/identity';
 import { showDetectionToast, showEpisodeChangeToast } from './toast';
@@ -185,6 +187,47 @@ function networkEpisodeToMedia(
     canonicalUrl: `${url.origin}${url.pathname}`,
   };
 }
+
+window.addEventListener('branilist-sync:netflix-network-diagnostic', event => {
+  const raw = (event as CustomEvent<string>).detail;
+  if (typeof raw !== 'string' || raw.length > 4096) return;
+  try {
+    const payload = JSON.parse(raw) as Partial<NetflixBridgeDiagnostics>;
+    void chrome.runtime.sendMessage({
+      type: 'NETFLIX_BRIDGE_DIAGNOSTIC',
+      payload,
+    }).catch(() => undefined);
+  } catch {
+    // Ignore malformed diagnostics from the page world.
+  }
+});
+
+window.addEventListener('branilist-sync:netflix-network-episode', event => {
+  const raw = (event as CustomEvent<string>).detail;
+  if (typeof raw !== 'string' || raw.length > 4096) return;
+
+  let episode: NetflixNetworkEpisode;
+  try {
+    episode = JSON.parse(raw) as NetflixNetworkEpisode;
+  } catch {
+    return;
+  }
+
+  const liveId = netflixWatchIdFromDocument(livePageUrl(), document);
+  if (!liveId || liveId !== episode.episodeProviderId) return;
+
+  setNetflixNetworkEpisode(episode);
+  mountedKey = '';
+
+  const provider = activeProviderForPage();
+  if (provider?.id !== 'netflix') return;
+
+  void provider.detect({ url: livePageUrl(), document })
+    .then(media => media ? reportDetected(media) : undefined)
+    .catch(() => undefined);
+
+  mountForCurrentPage(true);
+});
 
 window.addEventListener('branilist-sync:crunchyroll-network-diagnostic', event => {
   const raw = (event as CustomEvent<string>).detail;
