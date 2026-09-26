@@ -215,21 +215,25 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         !currentUrl.pathname.includes('/watch/' + message.payload.watchId)
       ) throw new Error('Mudança de título Netflix inválida.');
 
-      const previous = (await chrome.storage.local.get(PROVIDER_DIAG))[PROVIDER_DIAG] as ProviderDiagnostics | undefined;
-      const providerDiagnostics: ProviderDiagnostics = {
-        ...(previous?.providerId === 'netflix' ? previous : { providerId: 'netflix' }),
-        providerId: 'netflix',
-        active: true,
-        lastProbeAt: new Date().toISOString(),
-        lastCanonicalUrl: `${currentUrl.origin}${currentUrl.pathname}`,
-        lastPathname: currentUrl.pathname,
-        lastEpisodeId: undefined,
-        lastEpisodeNumber: undefined,
-        lastProgressPercent: undefined,
-      };
+      await updateTrackerSession(sender, 'netflix', session => {
+        const previous = session.providerDiagnostics;
+        const providerDiagnostics: ProviderDiagnostics = {
+          ...(previous?.providerId === 'netflix' ? previous : { providerId: 'netflix' }),
+          providerId: 'netflix',
+          active: true,
+          lastProbeAt: new Date().toISOString(),
+          lastCanonicalUrl: `${currentUrl.origin}${currentUrl.pathname}`,
+          lastPathname: currentUrl.pathname,
+          lastEpisodeId: undefined,
+          lastEpisodeNumber: undefined,
+          lastProgressPercent: undefined,
+        };
 
-      await chrome.storage.local.set({ [PROVIDER_DIAG]: providerDiagnostics });
-      await chrome.storage.local.remove([DETECTED, NAVIGATION, CURRENT_RESOLUTION]);
+        return {
+          ...clearSessionCurrentState(session),
+          providerDiagnostics,
+        };
+      });
       return { ok: true };
     }
     if (message.type === 'NETFLIX_BRIDGE_DIAGNOSTIC') {
