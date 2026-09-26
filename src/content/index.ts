@@ -163,7 +163,6 @@ async function detectEpisodeNavigation(): Promise<void> {
     // A navigation hint must never block the safe parser from retrying.
   }
 
-  mountForCurrentPage(true);
 }
 
 function queueRemount(): void {
