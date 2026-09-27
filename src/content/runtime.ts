@@ -10,7 +10,7 @@ export function runtimeContextAvailable(): boolean {
   }
 }
 
-export async function sendRuntimeMessage<T = unknown>(message: unknown): Promise<T | undefined> {
+export async function sendRuntimeMessage<T = any>(message: unknown): Promise<T | undefined> {
   if (!runtimeContextAvailable()) return undefined;
 
   try {
