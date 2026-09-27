@@ -120,7 +120,7 @@ export function retryDelayMs(
         ? 60_000
         : 60_000;
 
-  const exponential = Math.min(base * 2 ** Math.min(safeAttempts - 1, 8), 6 * 60 * 60 * 1000);
+  const exponential = Math.min(base * 2 ** Math.min(safeAttempts - 1, 16), 6 * 60 * 60 * 1000);
   const retryAfter = decision.retryAfterMs ?? 0;
   const floor = Math.max(exponential, retryAfter);
   const jitter = 0.85 + Math.min(1, Math.max(0, random)) * 0.30;
