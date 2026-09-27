@@ -24,6 +24,7 @@ import type {
 
 const KEY = 'branilist.sync.v4';
 const SESSIONS = 'branilist.tracker-sessions.v1';
+const RETRY_ALARM = 'branilist.sync.retry';
 const LEGACY_SESSION_KEYS = [
   'branilist.detected',
   'branilist.episode-navigation',
@@ -44,6 +45,28 @@ const engine = new SyncEngine({
 });
 // Account changes and writes must not race. Persisted events belong to this account.
 let queue: Promise<unknown> = ready;
+
+async function scheduleNextRetryAlarm(): Promise<void> {
+  if (!chrome.alarms) return;
+
+  const next = await engine.nextRetryAt();
+  await chrome.alarms.clear(RETRY_ALARM);
+  if (next === undefined) return;
+
+  chrome.alarms.create(RETRY_ALARM, {
+    when: Math.max(Date.now() + 1_000, next),
+  });
+}
+
+async function runSync(
+  media?: DetectedMedia,
+  retryId?: string,
+  mode: 'manual' | 'automatic' = 'manual',
+) {
+  const state = await engine.run(media, retryId, mode);
+  await scheduleNextRetryAlarm();
+  return state;
+}
 
 async function loadTrackerSessions(): Promise<TrackerSessionMap> {
   const stored = (await chrome.storage.local.get(SESSIONS))[SESSIONS];
@@ -414,7 +437,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
 
       const settings = await loadSettings();
       if (!settings.autoSync) return { ok: true, skipped: true, reason: 'auto_sync_disabled' };
-      return { ok: true, lastSync: await engine.run(media) };
+      return { ok: true, lastSync: await runSync(media) };
     }
     if (message.type === 'SAVE_USER_MAPPING') {
       const media = validateDetection(message.payload.media, sender);
@@ -439,14 +462,16 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (message.type === 'AUTH_LOGIN') {
       await login();
       await chrome.storage.local.remove([KEY, SESSIONS, ...LEGACY_SESSION_KEYS]);
+      if (chrome.alarms) await chrome.alarms.clear(RETRY_ALARM);
       return { ok: true };
     }
     if (message.type === 'AUTH_LOGOUT') {
       await logout();
       await chrome.storage.local.remove([KEY, SESSIONS, ...LEGACY_SESSION_KEYS]);
+      if (chrome.alarms) await chrome.alarms.clear(RETRY_ALARM);
       return { ok: true };
     }
-    if (message.type === 'SYNC_RETRY') return { ok: true, lastSync: await engine.run(undefined, message.retryId) };
+    if (message.type === 'SYNC_RETRY') return { ok: true, lastSync: await runSync(undefined, message.retryId, 'manual') };
     if (message.type === 'LIBRARY_GET') return { ok: true, ...(await getLibrary()) };
     if (message.type === 'LIBRARY_UPDATE') {
       if (!Number.isSafeInteger(message.mediaId) || message.mediaId < 1) throw new Error('Mídia Branilist inválida.');
@@ -514,3 +539,28 @@ if (chrome.tabs?.onRemoved?.addListener) {
     queue = cleanupTask.catch(() => undefined);
   });
 }
+
+if (chrome.alarms?.onAlarm?.addListener) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name !== RETRY_ALARM) return;
+
+    const retryTask = queue.then(async () => {
+      await ready;
+      const retryIds = await engine.dueRetryIds();
+
+      for (const retryId of retryIds) {
+        try {
+          await engine.run(undefined, retryId, 'automatic');
+        } catch {
+          // A single corrupt/expired event must not block other due retries.
+        }
+      }
+
+      await scheduleNextRetryAlarm();
+    });
+
+    queue = retryTask.catch(() => undefined);
+  });
+}
+
+void ready.then(scheduleNextRetryAlarm).catch(() => undefined);

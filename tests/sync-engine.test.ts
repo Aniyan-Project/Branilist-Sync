@@ -68,3 +68,94 @@ describe('durable safe synchronization', () => {
     expect(deps.write).not.toHaveBeenCalled();
   });
 });
+
+
+describe('automatic durable retries', () => {
+  it('persists a scheduled retry for an offline write and exposes it as due later', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+    try {
+      const { deps, engine } = setup();
+      deps.write.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      const failed = await engine.run(media);
+      expect(failed).toMatchObject({
+        status: 'error',
+        autoRetry: true,
+        retryKind: 'network',
+        attempts: 1,
+      });
+      expect(failed.nextAttemptAt).toBeTruthy();
+
+      const dueAt = Date.parse(failed.nextAttemptAt!);
+      expect(await engine.nextRetryAt()).toBe(dueAt);
+      expect(await engine.dueRetryIds(dueAt - 1)).toEqual([]);
+      expect(await engine.dueRetryIds(dueAt)).toEqual([failed.retryId]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('replays the same durable event automatically when its alarm becomes due', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+    try {
+      const { deps, engine } = setup();
+      deps.write
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce({ ...safe, action: 'PROGRESS_UPDATED' });
+
+      const failed = await engine.run(media);
+      const firstEvent = structuredClone(deps.write.mock.calls[0][0]);
+      const dueAt = Date.parse(failed.nextAttemptAt!);
+
+      vi.setSystemTime(new Date(dueAt + 1));
+      const synced = await engine.run(undefined, failed.retryId, 'automatic');
+
+      expect(synced.status).toBe('synced');
+      expect(deps.write).toHaveBeenCalledTimes(2);
+      expect(deps.write.mock.calls[1][0].id).toBe(firstEvent.id);
+      expect(deps.write.mock.calls[1][0].occurredAt).toBe(firstEvent.occurredAt);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not automatically retry authentication or permanent client failures', async () => {
+    const { deps, engine } = setup();
+    deps.write.mockRejectedValueOnce({ status: 401, message: 'Sessão Branilist expirada' });
+
+    const auth = await engine.run(media);
+    expect(auth).toMatchObject({
+      status: 'error',
+      autoRetry: false,
+      retryKind: 'auth',
+      httpStatus: 401,
+      attempts: 1,
+    });
+    expect(auth.nextAttemptAt).toBeUndefined();
+    expect(await engine.nextRetryAt()).toBeUndefined();
+  });
+
+  it('persists Retry-After based rate-limit scheduling', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+    try {
+      const { deps, engine } = setup();
+      deps.write.mockRejectedValueOnce({ status: 429, retryAfterMs: 120_000 });
+
+      const failed = await engine.run(media);
+      expect(failed).toMatchObject({
+        status: 'error',
+        autoRetry: true,
+        retryKind: 'rate_limit',
+        httpStatus: 429,
+      });
+      expect(Date.parse(failed.nextAttemptAt!)).toBeGreaterThanOrEqual(
+        Date.now() + 120_000 * 0.85,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

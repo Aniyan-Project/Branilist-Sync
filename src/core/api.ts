@@ -13,6 +13,31 @@ import type { PendingEvent } from './sync-engine';
 const API_BASE = 'https://branilist.com/api/extension/v1';
 const PUBLIC_API_BASE = 'https://branilist.com/api/v1';
 
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly retryAfterMs?: number,
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
+}
+
+function retryAfterMs(response: Response): number | undefined {
+  const raw = response.headers.get('retry-after')?.trim();
+  if (!raw) return undefined;
+
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, 24 * 60 * 60 * 1000);
+  }
+
+  const at = Date.parse(raw);
+  if (!Number.isFinite(at)) return undefined;
+  return Math.max(0, Math.min(at - Date.now(), 24 * 60 * 60 * 1000));
+}
+
 type EventPayload = {
   provider: string;
   providerMediaId?: string;
@@ -53,12 +78,12 @@ async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Re
   };
 
   const token = await accessToken();
-  if (!token) throw new Error('Conta Branilist não vinculada');
+  if (!token) throw new ApiRequestError('Conta Branilist não vinculada', 401);
 
   let response = await send(token);
   if (response.status === 401) {
     const refreshed = await refreshAccessToken(true);
-    if (!refreshed) throw new Error('Sessão Branilist expirada');
+    if (!refreshed) throw new ApiRequestError('Sessão Branilist expirada', 401);
     response = await send(refreshed);
   }
   return response;
@@ -73,7 +98,11 @@ async function jsonResponse<T>(response: Response, context: string): Promise<T> 
     } catch {
       // Resposta sem JSON: status HTTP já é suficiente para diagnóstico.
     }
-    throw new Error(`${context}: HTTP ${response.status}${detail ? ` — ${detail}` : ''}`);
+    throw new ApiRequestError(
+      `${context}: HTTP ${response.status}${detail ? ` — ${detail}` : ''}`,
+      response.status,
+      retryAfterMs(response),
+    );
   }
   return (await response.json()) as T;
 }

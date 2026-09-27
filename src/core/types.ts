@@ -254,6 +254,11 @@ export interface SyncState {
   message?: string;
   media?: DetectedMedia;
   result?: ResolveResult;
+  attempts?: number;
+  nextAttemptAt?: string;
+  retryKind?: 'network' | 'rate_limit' | 'server' | 'auth' | 'client' | 'unknown';
+  httpStatus?: number;
+  autoRetry?: boolean;
   updatedAt: string;
 }
 

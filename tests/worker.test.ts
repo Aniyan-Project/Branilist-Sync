@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   updateLibrary: vi.fn(),
   getMediaDetail: vi.fn(),
   logout: vi.fn(),
+  alarmCreate: vi.fn(),
+  alarmClear: vi.fn(async () => true),
 }));
 vi.mock('../src/core/auth', () => ({ authStatus: async () => ({ authenticated: true }), login: vi.fn(), logout: mocks.logout }));
 vi.mock('../src/core/api', () => ({
@@ -25,6 +27,7 @@ const popup = { id, url: `chrome-extension://${id}/src/ui/popup/popup.html` };
 const media = { providerId: 'crunchyroll', providerMediaId: 'G123', canonicalUrl: url, kind: 'ANIME', title: 'Example', episode: 3, progressPercent: 90 };
 const safe = { matched: true, mediaId: 42, requiresConfirmation: false, confidence: 1, action: 'MATCHED', previousProgress: 2, newProgress: 3 };
 let listener: (message: unknown, sender: unknown, reply: (value: unknown) => void) => boolean;
+let alarmListener: (alarm: chrome.alarms.Alarm) => void;
 let storage: Record<string, unknown>;
 const send = (message: unknown, sender = source as unknown) => new Promise<any>(resolve => listener(message, sender, resolve));
 beforeEach(async () => {
@@ -43,8 +46,17 @@ beforeEach(async () => {
       set: async (values: Record<string, unknown>) => { Object.assign(storage, structuredClone(values)); },
       remove: async (keys: string[]) => { keys.forEach(key => delete storage[key]); },
     } },
+    alarms: {
+      create: mocks.alarmCreate,
+      clear: mocks.alarmClear,
+      onAlarm: { addListener: (fn: typeof alarmListener) => { alarmListener = fn; } },
+    },
   });
   await import('../src/background/service-worker');
+  await Promise.resolve();
+  await Promise.resolve();
+  mocks.alarmCreate.mockClear();
+  mocks.alarmClear.mockClear();
 });
 it('serializes duplicate detections into one write', async () => {
   const message = { type: 'SYNC_PROGRESS', payload: media };
@@ -463,4 +475,58 @@ it('clears a Netflix watch change only in the originating tab', async () => {
     providerId: 'crunchyroll',
     title: 'Example',
   });
+});
+
+
+it('schedules and replays a durable retry from a Chrome alarm', async () => {
+  mocks.write
+    .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    .mockResolvedValueOnce({ ...safe, action: 'PROGRESS_UPDATED' });
+
+  const first = await send({ type: 'SYNC_PROGRESS', payload: media });
+  expect(first.ok).toBe(true);
+  expect(first.lastSync).toMatchObject({
+    status: 'error',
+    autoRetry: true,
+    retryKind: 'network',
+    attempts: 1,
+  });
+  expect(mocks.alarmCreate).toHaveBeenCalledWith(
+    'branilist.sync.retry',
+    expect.objectContaining({ when: expect.any(Number) }),
+  );
+
+  const snapshot = storage['branilist.sync.v4'] as any;
+  const event = snapshot.events[0];
+  const originalId = event.id;
+  const originalOccurredAt = event.occurredAt;
+  event.state.nextAttemptAt = new Date(Date.now() - 1_000).toISOString();
+  storage['branilist.sync.v4'] = structuredClone(snapshot);
+
+  alarmListener({ name: 'branilist.sync.retry' } as chrome.alarms.Alarm);
+
+  await vi.waitFor(() => expect(mocks.write).toHaveBeenCalledTimes(2));
+  expect(mocks.write.mock.calls[1][0]).toMatchObject({
+    id: originalId,
+    occurredAt: originalOccurredAt,
+  });
+
+  const after = storage['branilist.sync.v4'] as any;
+  expect(after.events[0].state.status).toBe('synced');
+});
+
+it('does not schedule automatic retry for an expired authentication session', async () => {
+  mocks.write.mockRejectedValueOnce({
+    status: 401,
+    message: 'Sessão Branilist expirada',
+  });
+
+  const result = await send({ type: 'SYNC_PROGRESS', payload: media });
+  expect(result.lastSync).toMatchObject({
+    status: 'error',
+    autoRetry: false,
+    retryKind: 'auth',
+    httpStatus: 401,
+  });
+  expect(mocks.alarmCreate).not.toHaveBeenCalled();
 });

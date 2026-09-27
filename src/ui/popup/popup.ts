@@ -419,11 +419,23 @@ function renderPending(state: SyncState | null) {
   syncTitleEl.textContent = titles[state.status];
   syncMessageEl.textContent = state.message ?? '';
   const candidates = state.result?.candidates ?? [];
-  syncCandidatesEl.textContent = state.status === 'confirmation_required'
-    ? candidates.length
+  if (state.status === 'confirmation_required') {
+    syncCandidatesEl.textContent = candidates.length
       ? 'Encontramos ' + candidates.length + ' candidato(s) para revisão.'
-      : 'A correspondência precisa de revisão.'
-    : '';
+      : 'A correspondência precisa de revisão.';
+  } else if (state.status === 'error' && state.autoRetry && state.nextAttemptAt) {
+    const when = new Date(state.nextAttemptAt);
+    const time = Number.isFinite(when.getTime())
+      ? when.toLocaleTimeString(profile?.localeCode ?? 'pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : null;
+    syncCandidatesEl.textContent = time
+      ? `Tentativa automática agendada para ${time} • falha #${state.attempts ?? 1}`
+      : `Tentativa automática agendada • falha #${state.attempts ?? 1}`;
+  } else if (state.status === 'error' && state.retryKind === 'auth') {
+    syncCandidatesEl.textContent = 'É necessário vincular novamente a conta antes de repetir.';
+  } else {
+    syncCandidatesEl.textContent = '';
+  }
   void hydratePendingCandidates(state);
 }
 
