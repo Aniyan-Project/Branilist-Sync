@@ -7,6 +7,7 @@ import type { CrunchyrollBridgeDiagnostics, DetectedMedia, NetflixBridgeDiagnost
 import type { CrunchyrollNetworkEpisode } from '../providers/crunchyroll/network';
 import { crunchyrollSeasonIdentity } from '../providers/crunchyroll/identity';
 import { showDetectionToast, showEpisodeChangeToast } from './toast';
+import { runtimeContextAvailable, sendRuntimeMessage } from './runtime';
 
 let cleanup: (() => void) | null = null;
 let mountedKey = '';
@@ -131,7 +132,7 @@ async function reportProviderDiagnostic(providerId: string, active: boolean): Pr
   if (key === lastProviderDiagnosticKey) return;
   lastProviderDiagnosticKey = key;
 
-  await chrome.runtime.sendMessage({
+  await sendRuntimeMessage({
     type: 'PROVIDER_DIAGNOSTIC',
     payload,
   }).catch(() => undefined);
@@ -147,7 +148,7 @@ async function reportDetected(media: DetectedMedia): Promise<void> {
   }
 
   const promise = (async () => {
-    const response = await chrome.runtime.sendMessage({ type: 'TRACKER_DETECTED', payload: media });
+    const response = await sendRuntimeMessage({ type: 'TRACKER_DETECTED', payload: media });
     if (!response?.ok) return;
 
     lastSuccessfulDetectionKey = key;
@@ -164,7 +165,7 @@ async function reportDetected(media: DetectedMedia): Promise<void> {
 }
 
 async function reportProgress(media: DetectedMedia): Promise<void> {
-  await chrome.runtime.sendMessage({ type: 'SYNC_PROGRESS', payload: media });
+  await sendRuntimeMessage({ type: 'SYNC_PROGRESS', payload: media });
 }
 
 async function clearTrackerForCurrentPage(providerId?: string): Promise<void> {
@@ -184,7 +185,7 @@ async function clearTrackerForCurrentPage(providerId?: string): Promise<void> {
   mountedProviderId = undefined;
   if (providerId === 'crunchyroll') currentCrunchyrollEpisodeId = undefined;
 
-  await chrome.runtime.sendMessage({
+  await sendRuntimeMessage({
     type: 'TRACKER_CLEARED',
     payload: { providerId, canonicalUrl },
   }).catch(() => undefined);
@@ -255,7 +256,7 @@ window.addEventListener('branilist-sync:netflix-watch-changed', event => {
     cleanup?.();
     cleanup = null;
 
-    void chrome.runtime.sendMessage({
+    void sendRuntimeMessage({
       type: 'NETFLIX_WATCH_CHANGED',
       payload: {
         watchId,
@@ -274,7 +275,7 @@ window.addEventListener('branilist-sync:netflix-network-diagnostic', event => {
   if (typeof raw !== 'string' || raw.length > 4096) return;
   try {
     const payload = JSON.parse(raw) as Partial<NetflixBridgeDiagnostics>;
-    void chrome.runtime.sendMessage({
+    void sendRuntimeMessage({
       type: 'NETFLIX_BRIDGE_DIAGNOSTIC',
       payload,
     }).catch(() => undefined);
@@ -313,7 +314,7 @@ window.addEventListener('branilist-sync:crunchyroll-network-diagnostic', event =
   if (typeof raw !== 'string' || raw.length > 4096) return;
   try {
     const payload = JSON.parse(raw) as Partial<CrunchyrollBridgeDiagnostics>;
-    void chrome.runtime.sendMessage({ type: 'BRIDGE_DIAGNOSTIC', payload }).catch(() => undefined);
+    void sendRuntimeMessage({ type: 'BRIDGE_DIAGNOSTIC', payload }).catch(() => undefined);
   } catch {
     // Ignore malformed diagnostics from the page world.
   }
@@ -332,7 +333,7 @@ async function activateCachedEpisode(episodeId: string, previousEpisodeId?: stri
 
   if (previousEpisodeId && previousEpisodeId !== episodeId) {
     try {
-      const response = await chrome.runtime.sendMessage({
+      const response = await sendRuntimeMessage({
         type: 'EPISODE_NAVIGATED',
         payload: {
           providerId: 'crunchyroll',
@@ -463,7 +464,7 @@ async function detectCrunchyrollEpisodeNavigation(): Promise<void> {
   if (await activateCachedEpisode(nextEpisodeId, previousEpisodeId)) return;
 
   try {
-    const response = await chrome.runtime.sendMessage({
+    const response = await sendRuntimeMessage({
       type: 'EPISODE_NAVIGATED',
       payload: {
         providerId: 'crunchyroll',
@@ -486,6 +487,8 @@ async function detectCrunchyrollEpisodeNavigation(): Promise<void> {
 }
 
 async function reconcileCurrentPage(): Promise<void> {
+  if (!runtimeContextAvailable()) return;
+
   const url = livePageUrl();
   const hostProvider = providerForHost(url);
   const provider = activeProviderForPage(url);
@@ -503,7 +506,7 @@ async function reconcileCurrentPage(): Promise<void> {
 }
 
 function queueRemount(): void {
-  if (remountQueued) return;
+  if (!runtimeContextAvailable() || remountQueued) return;
   remountQueued = true;
   window.setTimeout(() => {
     remountQueued = false;
