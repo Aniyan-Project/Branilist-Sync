@@ -12,3 +12,11 @@ export const providers: readonly TrackerProvider[] = [
 export function providerForUrl(url: URL): TrackerProvider | undefined {
   return providers.find((provider) => provider.matches(url));
 }
+
+export function providerForHost(url: URL): TrackerProvider | undefined {
+  return providers.find((provider) => provider.hosts.includes(url.hostname));
+}
+
+export function providerById(id: string): TrackerProvider | undefined {
+  return providers.find((provider) => provider.id === id);
+}

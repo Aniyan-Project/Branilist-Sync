@@ -8,17 +8,21 @@ const mocks = vi.hoisted(() => ({
   episodeToast: vi.fn(),
 }));
 
-vi.mock('../src/core/provider-registry', () => ({
-  providerForUrl: () => ({
+vi.mock('../src/core/provider-registry', () => {
+  const provider = {
     id: 'crunchyroll',
     name: 'Crunchyroll',
-    hosts: ['www.crunchyroll.com'],
+    hosts: ['www.crunchyroll.com', 'crunchyroll.com'],
     kind: 'ANIME',
-    matches: () => true,
+    matches: (url: URL) => /\/watch\//.test(url.pathname),
     detect: mocks.detect,
     observe: mocks.observe,
-  }),
-}));
+  };
+  return {
+    providerForUrl: (url: URL) => provider.matches(url) ? provider : undefined,
+    providerForHost: (url: URL) => provider.hosts.includes(url.hostname) ? provider : undefined,
+  };
+});
 
 vi.mock('../src/content/toast', () => ({
   showDetectionToast: mocks.toast,

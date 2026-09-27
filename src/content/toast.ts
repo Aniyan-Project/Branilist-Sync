@@ -1,6 +1,19 @@
 import type { CatalogSearchItem, CatalogSearchResponse, DetectedMedia, ExtensionSettings, ResolveResult } from '../core/types';
+import { sendRuntimeMessage } from './runtime';
 
 const SEARCH_BASE = 'https://branilist.com/api/v1/search';
+
+let lastDetectionToastKey = '';
+
+function detectionToastKey(media: DetectedMedia): string {
+  if (media.providerEpisodeId) return `${media.providerId}|episode:${media.providerEpisodeId}`;
+  return [
+    media.providerId,
+    media.providerMediaId ?? '',
+    media.episode ?? '',
+    media.chapter ?? '',
+  ].join('|');
+}
 
 function preferredTitle(item: CatalogSearchItem): string {
   return item.title.portuguese || item.title.english || item.title.romaji || `Branilist #${item.id}`;
@@ -25,6 +38,10 @@ export interface DetectionFeedback {
 }
 
 export function showDetectionToast(media: DetectedMedia, feedback: DetectionFeedback): void {
+  const key = detectionToastKey(media);
+  if (key === lastDetectionToastKey) return;
+  lastDetectionToastKey = key;
+
   document.querySelector('#branilist-sync-toast-host')?.remove();
 
   const host = document.createElement('div');
@@ -173,7 +190,7 @@ export function showDetectionToast(media: DetectedMedia, feedback: DetectionFeed
         button.addEventListener('click', () => {
           error.textContent = '';
           button.disabled = true;
-          void chrome.runtime.sendMessage({
+          void sendRuntimeMessage({
             type: 'SAVE_USER_MAPPING',
             payload: { media, mediaId: item.id },
           }).then(response => {

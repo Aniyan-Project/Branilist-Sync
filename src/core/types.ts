@@ -13,12 +13,92 @@ export interface CrunchyrollBridgeDiagnostics {
   lastEpisodeAt?: string;
 }
 
+export interface NetflixBridgeDiagnostics {
+  active: boolean;
+  startedAt?: string;
+  checkedAt?: string;
+  hasReactContext?: boolean;
+  hasMemberApi?: boolean;
+  movieId?: string;
+  memberApiHost?: string;
+  lastMetadataStatus?: number | string;
+  lastMetadataAt?: string;
+  metadataMatched?: boolean;
+  lastEpisodeId?: string;
+  lastEpisodeNumber?: number;
+  lastSeasonNumber?: number;
+  lastSeriesId?: string;
+  genreStatus?: number | string;
+  genreCheckedAt?: string;
+  genreIds?: number[];
+  genreLabels?: string[];
+  genreSource?: 'ids' | 'labels' | 'none';
+  genreFetchMode?: 'public';
+  animeConfirmed?: boolean;
+}
+
 export interface EpisodeNavigationState {
   providerId: string;
   previousEpisodeId?: string;
   episodeProviderId: string;
   canonicalUrl: string;
   detectedAt: string;
+}
+
+export interface ProviderDiagnostics {
+  providerId: string;
+  active: boolean;
+  lastProbeAt?: string;
+  lastDetectedAt?: string;
+  lastCanonicalUrl?: string;
+  lastPathname?: string;
+  hasVideo?: boolean;
+  hasPlayerRoot?: boolean;
+  hasTitleRoot?: boolean;
+  hasWatchId?: boolean;
+  playerTitleText?: string;
+  lastEpisodeId?: string;
+  lastEpisodeNumber?: number;
+  lastProgressPercent?: number;
+  lastClearedAt?: string;
+}
+
+export interface TrackerSessionState {
+  key: string;
+  tabId: number;
+  frameId: number;
+  providerId: string;
+  updatedAt: string;
+  detected?: DetectedMedia;
+  episodeNavigation?: EpisodeNavigationState;
+  bridgeDiagnostics?: CrunchyrollBridgeDiagnostics;
+  netflixBridgeDiagnostics?: NetflixBridgeDiagnostics;
+  providerDiagnostics?: ProviderDiagnostics;
+  currentResolution?: CurrentResolution;
+}
+
+export interface TrackerSessionSummary {
+  key: string;
+  tabId: number;
+  frameId: number;
+  providerId: string;
+  updatedAt: string;
+  active: boolean;
+  title?: string;
+  episode?: number;
+  canonicalUrl?: string;
+}
+
+export interface ProviderPageDiagnostic {
+  providerId: string;
+  active: boolean;
+  canonicalUrl: string;
+  pathname: string;
+  hasVideo: boolean;
+  hasPlayerRoot: boolean;
+  hasTitleRoot: boolean;
+  hasWatchId: boolean;
+  playerTitleText?: string;
 }
 
 export interface ExtensionSettings {
@@ -197,11 +277,14 @@ export type ExtensionMessage =
   | { type: 'TRACKER_DETECTED'; payload: DetectedMedia }
   | { type: 'EPISODE_NAVIGATED'; payload: EpisodeNavigationState }
   | { type: 'BRIDGE_DIAGNOSTIC'; payload: Partial<CrunchyrollBridgeDiagnostics> }
-  | { type: 'TRACKER_CLEARED'; payload: { providerId: 'crunchyroll'; canonicalUrl: string } }
+  | { type: 'NETFLIX_BRIDGE_DIAGNOSTIC'; payload: Partial<NetflixBridgeDiagnostics> }
+  | { type: 'NETFLIX_WATCH_CHANGED'; payload: { watchId: string; canonicalUrl: string } }
+  | { type: 'PROVIDER_DIAGNOSTIC'; payload: ProviderPageDiagnostic }
+  | { type: 'TRACKER_CLEARED'; payload: { providerId: string; canonicalUrl: string } }
   | { type: 'SAVE_USER_MAPPING'; payload: { media: DetectedMedia; mediaId: number } }
   | { type: 'AUTH_LOGIN' }
   | { type: 'AUTH_LOGOUT' }
-  | { type: 'AUTH_STATUS' }
+  | { type: 'AUTH_STATUS'; activeTabId?: number }
   | { type: 'SETTINGS_GET' }
   | { type: 'SETTINGS_SET'; payload: ExtensionSettings }
   | { type: 'LIBRARY_GET' }

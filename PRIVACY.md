@@ -10,7 +10,7 @@ Esta Política de Privacidade descreve como a extensão **Branilist Sync** trata
 
 O Branilist Sync tem uma finalidade única: **identificar a mídia e o progresso de reprodução em serviços compatíveis e sincronizar essas informações com a conta Branilist autorizada pelo usuário**.
 
-Na data desta política, a integração publicada utiliza a **Crunchyroll** como serviço de reprodução compatível. Outros providers somente passam a fazer parte do tratamento descrito aqui quando forem explicitamente adicionados em uma atualização da extensão.
+Na versão **0.8.0**, os serviços de reprodução compatíveis são **Crunchyroll** e **Netflix**. Novos providers somente passam a fazer parte do tratamento descrito aqui quando forem explicitamente adicionados em uma atualização da extensão.
 
 ## 2. Dados tratados
 
@@ -56,7 +56,7 @@ A extensão utiliza `chrome.storage.local` para armazenar informações necessá
 - mídia detectada e correspondência atual;
 - histórico recente e diagnósticos técnicos.
 
-Os tokens são configurados para ficarem acessíveis somente a contextos confiáveis da extensão e **não são enviados para a Crunchyroll**.
+Os tokens são configurados para ficarem acessíveis somente a contextos confiáveis da extensão e **não são enviados para os serviços de streaming compatíveis**.
 
 Ao utilizar a ação de desvincular/sair no Branilist Sync, a extensão revoga os tokens quando possível e remove localmente credenciais, eventos e estados de sincronização associados à conta.
 
@@ -92,7 +92,7 @@ O Branilist Sync **não vende dados pessoais**.
 
 Os dados não são transferidos para redes de publicidade, data brokers ou terceiros para criação de perfil, marketing ou finalidades não relacionadas ao único propósito da extensão.
 
-Informações necessárias à sincronização são transmitidas somente aos serviços do Branilist. O acesso às páginas da Crunchyroll ocorre localmente no navegador para detectar a mídia; tokens Branilist não são compartilhados com a Crunchyroll.
+Informações necessárias à sincronização são transmitidas somente aos serviços do Branilist. O acesso às páginas dos serviços de streaming compatíveis ocorre localmente no navegador para detectar a mídia; tokens Branilist não são compartilhados com Crunchyroll, Netflix ou outros providers.
 
 ## 9. Permissões do Chrome
 
@@ -101,7 +101,7 @@ A extensão utiliza apenas permissões relacionadas à sua funcionalidade:
 - **storage:** armazenamento local de autenticação, configurações e estado de sincronização;
 - **identity:** fluxo OAuth/PKCE de conexão com a conta Branilist;
 - **acesso a `branilist.com`:** autenticação e comunicação com as APIs do Branilist;
-- **acesso aos hosts compatíveis da Crunchyroll:** identificação da mídia, episódio e progresso necessários à sincronização.
+- **acesso aos hosts compatíveis de Crunchyroll e Netflix:** identificação da mídia, episódio e progresso necessários à sincronização.
 
 O Branilist Sync não carrega nem executa código JavaScript ou WebAssembly remoto. O código executável da extensão é distribuído dentro do próprio pacote da extensão.
 
@@ -120,7 +120,7 @@ O Branilist Sync não solicita nem precisa de:
 - localização precisa;
 - comunicações pessoais, e-mails ou mensagens;
 - senhas da conta Google;
-- senhas da Crunchyroll;
+- senhas dos serviços de streaming compatíveis;
 - conteúdo de vídeo ou áudio reproduzido.
 
 A permissão `identity` é usada para o fluxo de autenticação do Branilist e não para acessar dados da Conta Google do usuário.
@@ -159,7 +159,7 @@ This Privacy Policy explains how the **Branilist Sync** browser extension handle
 
 Branilist Sync has a single purpose: **identify media and playback progress on supported services and synchronize that information with the Branilist account authorized by the user**.
 
-As of the date of this policy, the published integration uses **Crunchyroll** as its supported playback service. Other providers are covered only after they are explicitly added in an extension update.
+In version **0.8.0**, the supported playback services are **Crunchyroll** and **Netflix**. Additional providers are covered only after they are explicitly added in an extension update.
 
 ## 2. Data handled
 
@@ -205,7 +205,7 @@ The extension uses `chrome.storage.local` for information required to operate, i
 - detected media and current mapping/resolution;
 - recent history and technical diagnostics.
 
-Tokens are restricted to trusted extension contexts and **are not sent to Crunchyroll**.
+Tokens are restricted to trusted extension contexts and **are not sent to supported streaming services**.
 
 When the user signs out/unlinks Branilist Sync, the extension revokes tokens when possible and removes local credentials, events, and synchronization state associated with the account.
 
@@ -241,7 +241,7 @@ Branilist Sync **does not sell personal data**.
 
 Data is not transferred to advertising networks, data brokers, or third parties for profiling, marketing, or purposes unrelated to the extension's single purpose.
 
-Information required for synchronization is transmitted only to Branilist services. Access to Crunchyroll pages happens locally in the browser for media detection; Branilist tokens are not shared with Crunchyroll.
+Information required for synchronization is transmitted only to Branilist services. Access to supported streaming-service pages happens locally in the browser for media detection; Branilist tokens are not shared with Crunchyroll, Netflix, or other providers.
 
 ## 9. Chrome permissions
 
@@ -250,7 +250,7 @@ The extension uses only permissions related to its functionality:
 - **storage:** local storage of authentication, settings, and synchronization state;
 - **identity:** OAuth/PKCE flow for connecting a Branilist account;
 - **access to `branilist.com`:** authentication and Branilist API communication;
-- **access to supported Crunchyroll hosts:** identification of the media, episode, and progress required for synchronization.
+- **access to supported Crunchyroll and Netflix hosts:** identification of the media, episode, and progress required for synchronization.
 
 Branilist Sync does not load or execute remote JavaScript or WebAssembly. Executable extension code is distributed inside the extension package.
 
@@ -269,7 +269,7 @@ Branilist Sync does not request or require:
 - precise location;
 - personal communications, emails, or messages;
 - Google Account passwords;
-- Crunchyroll passwords;
+- passwords for supported streaming services;
 - played video or audio content.
 
 The `identity` permission is used for the Branilist authentication flow and not to access the user's Google Account data.

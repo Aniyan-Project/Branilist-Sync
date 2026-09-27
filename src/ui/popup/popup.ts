@@ -9,7 +9,10 @@ import type {
   LibraryStatus,
   MediaDetail,
   MediaTitleLanguage,
+  NetflixBridgeDiagnostics,
+  ProviderDiagnostics,
   SyncState,
+  TrackerSessionSummary,
 } from '../../core/types';
 
 const $ = <T extends Element = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
@@ -654,7 +657,15 @@ function renderDetailHero(entry: LibraryEntry, media: MediaDetail) {
 }
 
 async function refreshSession() {
-  const response = await chrome.runtime.sendMessage({ type: 'AUTH_STATUS' });
+  let activeTabId: number | undefined;
+  try {
+    const tabs = chrome.tabs.query ? await chrome.tabs.query({ active: true, currentWindow: true }) : [];
+    activeTabId = tabs[0]?.id;
+  } catch {
+    activeTabId = undefined;
+  }
+
+  const response = await chrome.runtime.sendMessage({ type: 'AUTH_STATUS', activeTabId });
   if (!response?.ok) throw new Error(response?.error ?? 'Não foi possível consultar o estado.');
 
   authenticated = Boolean(response.authenticated);
@@ -676,18 +687,88 @@ async function refreshSession() {
     ? `Client: ${response.oauth.clientId}\nID: ${response.oauth.extensionId}\nCallback: ${response.oauth.redirectUri}`
     : '';
 
+  const providerDiagnostics = (response.providerDiagnostics ?? null) as ProviderDiagnostics | null;
   const bridge = (response.bridgeDiagnostics ?? null) as CrunchyrollBridgeDiagnostics | null;
-  bridgeDiagnosticsEl.textContent = bridge
+  const sessionSummaries = (response.sessions ?? []) as TrackerSessionSummary[];
+  const activeSessionKey = typeof response.activeSessionKey === 'string' ? response.activeSessionKey : undefined;
+  const otherActiveSessions = sessionSummaries.filter(session =>
+    session.key !== activeSessionKey && session.active
+  );
+  const providerName = providerDiagnostics?.providerId === 'crunchyroll'
+    ? 'Crunchyroll'
+    : providerDiagnostics?.providerId === 'netflix'
+      ? 'Netflix'
+      : providerDiagnostics?.providerId ?? 'desconhecido';
+  const diagnosticLines: Array<string | null> = providerDiagnostics
     ? [
-        `Bridge: ${bridge.active ? 'ATIVO' : 'inativo'}`,
-        `JSONs observados: ${bridge.jsonResponsesSeen ?? 0}`,
-        bridge.startedAt ? `Iniciado: ${formatTime(bridge.startedAt)}` : null,
-        bridge.lastRequestAt ? `Última resposta: ${formatTime(bridge.lastRequestAt)}` : null,
-        bridge.lastRequestUrl ? `Última URL: ${bridge.lastRequestUrl}` : null,
-        bridge.lastEpisodeId ? `Último episódio extraído: ${bridge.lastEpisodeId}${bridge.lastEpisodeNumber ? ` (E${bridge.lastEpisodeNumber})` : ''}` : 'Último episódio extraído: nenhum',
-        bridge.lastEpisodeAt ? `Extraído em: ${formatTime(bridge.lastEpisodeAt)}` : null,
-      ].filter(Boolean).join('\n')
-    : 'Bridge: sem sinal recebido ainda.';
+        otherActiveSessions.length
+          ? `Outras sessões ativas: ${otherActiveSessions.length}`
+          : null,
+        `Provider: ${providerName} — ${providerDiagnostics.active ? 'ATIVO' : 'inativo'}`,
+        providerDiagnostics.lastProbeAt ? `Último probe: ${formatTime(providerDiagnostics.lastProbeAt)}` : null,
+        providerDiagnostics.lastDetectedAt ? `Última detecção: ${formatTime(providerDiagnostics.lastDetectedAt)}` : null,
+        providerDiagnostics.lastCanonicalUrl ? `Última página: ${providerDiagnostics.lastCanonicalUrl}` : null,
+        providerDiagnostics.lastPathname ? `Path: ${providerDiagnostics.lastPathname}` : null,
+        typeof providerDiagnostics.hasVideo === 'boolean' ? `Vídeo encontrado: ${providerDiagnostics.hasVideo ? 'SIM' : 'não'}` : null,
+        typeof providerDiagnostics.hasPlayerRoot === 'boolean' ? `Player root: ${providerDiagnostics.hasPlayerRoot ? 'SIM' : 'não'}` : null,
+        typeof providerDiagnostics.hasTitleRoot === 'boolean' ? `Bloco de título: ${providerDiagnostics.hasTitleRoot ? 'SIM' : 'não'}` : null,
+        typeof providerDiagnostics.hasWatchId === 'boolean' ? `Watch ID: ${providerDiagnostics.hasWatchId ? 'SIM' : 'não'}` : null,
+        providerDiagnostics.playerTitleText ? `Texto do player: ${providerDiagnostics.playerTitleText}` : null,
+        providerDiagnostics.lastEpisodeId
+          ? `Último episódio: ${providerDiagnostics.lastEpisodeId}${providerDiagnostics.lastEpisodeNumber ? ` (E${providerDiagnostics.lastEpisodeNumber})` : ''}`
+          : null,
+        Number.isFinite(providerDiagnostics.lastProgressPercent)
+          ? `Último progresso: ${providerDiagnostics.lastProgressPercent}%`
+          : null,
+        providerDiagnostics.lastClearedAt ? `Saiu do player em: ${formatTime(providerDiagnostics.lastClearedAt)}` : null,
+      ]
+    : ['Provider: sem detecção recebida ainda.'];
+
+  const netflixBridge = (response.netflixBridgeDiagnostics ?? null) as NetflixBridgeDiagnostics | null;
+  if (netflixBridge && (!providerDiagnostics || providerDiagnostics.providerId === 'netflix')) {
+    diagnosticLines.push(
+      '',
+      `Bridge Netflix: ${netflixBridge.active ? 'ATIVO' : 'inativo'}`,
+      typeof netflixBridge.hasReactContext === 'boolean' ? `reactContext: ${netflixBridge.hasReactContext ? 'SIM' : 'não'}` : null,
+      typeof netflixBridge.hasMemberApi === 'boolean' ? `Member API: ${netflixBridge.hasMemberApi ? 'SIM' : 'não'}` : null,
+      netflixBridge.memberApiHost ? `Member API host: ${netflixBridge.memberApiHost}` : null,
+      netflixBridge.movieId ? `Movie ID: ${netflixBridge.movieId}` : null,
+      netflixBridge.lastMetadataStatus !== undefined ? `Metadata status: ${netflixBridge.lastMetadataStatus}` : null,
+      typeof netflixBridge.metadataMatched === 'boolean' ? `Metadata encontrada: ${netflixBridge.metadataMatched ? 'SIM' : 'não'}` : null,
+      netflixBridge.lastSeriesId ? `Série ID: ${netflixBridge.lastSeriesId}` : null,
+      netflixBridge.genreStatus !== undefined ? `Genre status: ${netflixBridge.genreStatus}` : null,
+      netflixBridge.genreIds?.length ? `Genre IDs: ${netflixBridge.genreIds.join(', ')}` : null,
+      netflixBridge.genreLabels?.length ? `Gêneros: ${netflixBridge.genreLabels.join(' • ')}` : null,
+      netflixBridge.genreSource ? `Fonte dos gêneros: ${netflixBridge.genreSource}` : null,
+      netflixBridge.genreFetchMode ? `Consulta de gêneros: ${netflixBridge.genreFetchMode}` : null,
+      typeof netflixBridge.animeConfirmed === 'boolean'
+        ? `Anime confirmado: ${netflixBridge.animeConfirmed ? 'SIM' : 'não'}`
+        : null,
+      netflixBridge.genreCheckedAt ? `Gêneros verificados em: ${formatTime(netflixBridge.genreCheckedAt)}` : null,
+      netflixBridge.lastSeasonNumber ? `Temporada: ${netflixBridge.lastSeasonNumber}` : null,
+      netflixBridge.lastEpisodeId
+        ? `Episódio extraído: ${netflixBridge.lastEpisodeId}${netflixBridge.lastEpisodeNumber ? ` (E${netflixBridge.lastEpisodeNumber})` : ''}`
+        : null,
+      netflixBridge.lastMetadataAt ? `Metadata em: ${formatTime(netflixBridge.lastMetadataAt)}` : null,
+    );
+  }
+
+  if (bridge && (!providerDiagnostics || providerDiagnostics.providerId === 'crunchyroll')) {
+    diagnosticLines.push(
+      '',
+      `Bridge Crunchyroll: ${bridge.active ? 'ATIVO' : 'inativo'}`,
+      `JSONs observados: ${bridge.jsonResponsesSeen ?? 0}`,
+      bridge.startedAt ? `Iniciado: ${formatTime(bridge.startedAt)}` : null,
+      bridge.lastRequestAt ? `Última resposta: ${formatTime(bridge.lastRequestAt)}` : null,
+      bridge.lastRequestUrl ? `Última URL: ${bridge.lastRequestUrl}` : null,
+      bridge.lastEpisodeId
+        ? `Último episódio extraído: ${bridge.lastEpisodeId}${bridge.lastEpisodeNumber ? ` (E${bridge.lastEpisodeNumber})` : ''}`
+        : 'Último episódio extraído: nenhum',
+      bridge.lastEpisodeAt ? `Extraído em: ${formatTime(bridge.lastEpisodeAt)}` : null,
+    );
+  }
+
+  bridgeDiagnosticsEl.textContent = diagnosticLines.filter((line): line is string => line !== null).join('\n');
 
   settings = response.settings ?? settings;
   history = response.history ?? [];
