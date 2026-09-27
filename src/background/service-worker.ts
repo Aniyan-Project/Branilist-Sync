@@ -63,6 +63,20 @@ async function updateTrackerSession(
 ): Promise<TrackerSessionState> {
   const identity = trackerSessionIdentity(sender, providerId);
   const sessions = await loadTrackerSessions();
+
+  // A top-frame tab can only host one supported provider at a time. If the user
+  // reuses the same browser tab for another supported site, discard the stale
+  // provider session instead of keeping two "active" sessions for one tab.
+  for (const [key, candidate] of Object.entries(sessions)) {
+    if (
+      key !== identity.key &&
+      candidate.tabId === identity.tabId &&
+      candidate.frameId === identity.frameId
+    ) {
+      delete sessions[key];
+    }
+  }
+
   const previous: TrackerSessionState = sessions[identity.key] ?? {
     ...identity,
     updatedAt: new Date().toISOString(),
