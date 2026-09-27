@@ -1,19 +1,27 @@
+let invalidated = false;
+
 export function runtimeContextAvailable(): boolean {
   try {
-    return typeof chrome !== 'undefined' && Boolean(chrome.runtime?.id);
+    return !invalidated &&
+      typeof chrome !== 'undefined' &&
+      typeof chrome.runtime?.sendMessage === 'function';
   } catch {
     return false;
   }
 }
 
 export async function sendRuntimeMessage<T = unknown>(message: unknown): Promise<T | undefined> {
+  if (!runtimeContextAvailable()) return undefined;
+
   try {
-    if (!runtimeContextAvailable()) return undefined;
     return await chrome.runtime.sendMessage(message) as T;
-  } catch {
-    // Reloading/updating an unpacked extension invalidates already injected
-    // content-script contexts. That is expected during development and must
-    // not surface as an unhandled promise rejection in chrome://extensions.
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error ?? '');
+    if (/extension context invalidated/i.test(text)) invalidated = true;
+
+    // Content-script messaging is best-effort. Reloading/updating an unpacked
+    // extension invalidates scripts already injected into open pages; swallowing
+    // that rejection avoids a noisy chrome://extensions error until the tab reloads.
     return undefined;
   }
 }
