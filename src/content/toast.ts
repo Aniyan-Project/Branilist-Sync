@@ -1,4 +1,5 @@
 import type { CatalogSearchItem, CatalogSearchResponse, DetectedMedia, ExtensionSettings, ResolveResult } from '../core/types';
+import { sendRuntimeMessage } from './runtime';
 
 const SEARCH_BASE = 'https://branilist.com/api/v1/search';
 
@@ -189,7 +190,7 @@ export function showDetectionToast(media: DetectedMedia, feedback: DetectionFeed
         button.addEventListener('click', () => {
           error.textContent = '';
           button.disabled = true;
-          void chrome.runtime.sendMessage({
+          void sendRuntimeMessage({
             type: 'SAVE_USER_MAPPING',
             payload: { media, mediaId: item.id },
           }).then(response => {
